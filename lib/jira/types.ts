@@ -1,4 +1,15 @@
-export type JiraIssueStatus = 'Open' | 'In Progress' | 'In Review' | 'Completed' | 'Closed' | 'Blocked' | 'To Do' | 'Done' | 'Reopened';
+export type {
+  DashboardFilters,
+  DashboardIssue,
+  DashboardMetrics,
+  DashboardPayload,
+  IssuePagePayload,
+} from '@/shared/dashboardContract';
+
+export type {
+  AnalyticsIssue as JiraIssue,
+  AnalyticsSprint as JiraSprint,
+} from '@/shared/analytics';
 
 export interface JiraConfig {
   domain: string;
@@ -15,15 +26,6 @@ export interface JiraProject {
   projectTypeKey?: string;
 }
 
-export interface JiraSprint {
-  id: number;
-  name: string;
-  state: string;
-  startDate?: string;
-  endDate?: string;
-  completeDate?: string;
-}
-
 export interface JiraIssueType {
   id: string;
   name: string;
@@ -36,56 +38,5 @@ export interface JiraIssueStatusType {
   statusCategory?: {
     key: string;
     name: string;
-  };
-}
-
-export interface JiraIssue {
-  id: string;
-  key: string;
-  summary: string;
-  status?: string | { name?: string };
-  issuetype?: {
-    name?: string;
-  };
-  created: string;
-  updated: string;
-  resolved?: string | null;
-  project?: {
-    key?: string;
-    name?: string;
-  };
-  priority?: {
-    name?: string;
-  };
-  assignee?: {
-    displayName?: string;
-    emailAddress?: string;
-  };
-  customfield_10020?: number | string | null;
-}
-
-export interface DashboardFilters {
-  projectKey?: string;
-  sprintId?: number;
-  issueType?: string;
-  startDate?: string;
-  endDate?: string;
-}
-
-export interface DashboardMetrics {
-  totalIssues: number;
-  completionRate: number;
-  velocity: number;
-  avgCycleTimeDays: number;
-  createdVsResolved: Array<{ period: string; created: number; resolved: number }>;
-  statusBreakdown: Array<{ name: string; value: number; color: string }>;
-  velocityTrend: Array<{ period: string; target: number; actual: number }>;
-}
-
-export interface JiraApiResponse<T> {
-  data: T;
-  meta?: {
-    cached?: boolean;
-    source?: string;
   };
 }

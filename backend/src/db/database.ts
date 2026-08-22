@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import mysql, { Pool, PoolConnection } from 'mysql2/promise';
+import mysql, { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { env } from '../config/env';
 
 let pool: Pool | null = null;
@@ -63,6 +63,17 @@ export async function withDatabaseConnection<T>(operation: (connection: PoolConn
   }
 }
 
+async function ensureColumn(database: Pool, table: string, column: string, definition: string) {
+  const [rows] = await database.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS present FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+    [env.DB_NAME, table, column],
+  );
+  if (Number(rows[0]?.present || 0) === 0) {
+    await database.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+  }
+}
+
 export async function initializeDatabase() {
   if (!env.DB_ENABLED) return;
   if (env.DB_AUTO_CREATE) await createDatabaseIfNeeded();
@@ -72,6 +83,13 @@ export async function initializeDatabase() {
   for (const statement of schema.split(';').map((part) => part.trim()).filter(Boolean)) {
     await database.query(statement);
   }
+  await ensureColumn(database, 'jira_issues', 'status_category', 'VARCHAR(64) NULL');
+  await ensureColumn(database, 'jira_issues', 'assignee', 'VARCHAR(255) NULL');
+  await ensureColumn(database, 'jira_issues', 'story_points', 'DECIMAL(10,2) NULL');
+  await ensureColumn(database, 'jira_issues', 'flagged', 'TINYINT(1) NOT NULL DEFAULT 0');
+  await ensureColumn(database, 'jira_issues', 'in_progress_at', 'DATETIME(3) NULL');
+  await ensureColumn(database, 'jira_issues', 'last_status_changed_at', 'DATETIME(3) NULL');
+  await ensureColumn(database, 'jira_sync_state', 'last_issue_updated_at', 'DATETIME(3) NULL');
 }
 
 export async function checkDatabase() {

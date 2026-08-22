@@ -6,7 +6,9 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        display: ['Avenir Next', 'Trebuchet MS', 'sans-serif'],
+        sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
       colors: {
         border: 'hsl(var(--border))',
@@ -36,7 +38,7 @@ const config: Config = {
       },
       boxShadow: {
         soft: '0 8px 24px rgba(15, 23, 42, 0.12)',
-        glass: '0 18px 50px rgba(15, 23, 42, 0.12), inset 0 1px 1px rgba(255,255,255,0.12)',
+        glass: '0 24px 80px rgba(15, 23, 42, 0.12), 0 2px 0 rgba(255,255,255,0.04)',
       },
     },
   },

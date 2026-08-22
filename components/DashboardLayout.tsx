@@ -1,50 +1,93 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { Activity, BarChart3, ChevronLeft, ChevronRight, CircleDashed, Filter, FolderKanban, Gauge, TimerReset } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import type { DashboardPayload } from '@/shared/dashboardContract';
+import { AlertTriangle, BarChart3, ChevronLeft, ChevronRight, Filter, FolderKanban, Gauge, Activity, TimerReset } from 'lucide-react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { DashboardPayload, IssuePagePayload } from '@/shared/dashboardContract';
+import { AmbientBackground } from './AmbientBackground';
+import { GlassCard } from './GlassCard';
 import { MetricCard } from './MetricCard';
 import { StatusDistributionChart } from './StatusDistributionChart';
 import { ThroughputTrendChart } from './ThroughputTrendChart';
+import { AssigneeLoadChart, VelocityChart, WipAgingChart } from './FlowCharts';
 import { ThemeToggle } from './ThemeToggle';
 
-const velocityTheme = { primary: '#22d3ee', accent: '#a78bfa' };
+type Filters = {
+  projectKey: string;
+  sprintId: string;
+  issueType: string;
+  startDate: string;
+  endDate: string;
+};
 
-type Filters = { projectKey: string; sprintId: string; issueType: string };
-
-function VelocityChart({ data }: { data: Array<{ period: string; target: number; actual: number }> }) {
-  return <motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.35 }} className="glass-card p-5"><div className="mb-5"><p className="eyebrow">Sprint capacity</p><h2 className="section-title">Velocity / burndown</h2></div><div className="h-72"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}><defs><linearGradient id="velocity-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor={velocityTheme.primary} stopOpacity={0.42} /><stop offset="95%" stopColor={velocityTheme.primary} stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-slate-300/50 dark:text-slate-700/50" /><XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} /><Tooltip /><Area type="monotone" dataKey="actual" stroke={velocityTheme.primary} strokeWidth={2.5} fill="url(#velocity-fill)" animationDuration={1200} /><Area type="monotone" dataKey="target" stroke={velocityTheme.accent} strokeWidth={1.5} strokeDasharray="5 5" fill="transparent" animationDuration={1200} /></AreaChart></ResponsiveContainer></div></motion.section>;
+function Skeleton() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div key={index} className="glass-card h-32">
+          <div className="shimmer h-full w-full" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
-function Skeleton() { return <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-32 animate-pulse rounded-2xl bg-slate-200/70 dark:bg-slate-800/60" />)}</div>; }
+function initials(name?: string | null) {
+  if (!name) return '?';
+  return name.split(' ').slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+}
+
+function filtersFromParams(params: URLSearchParams): Filters {
+  return {
+    projectKey: params.get('projectKey') || '',
+    sprintId: params.get('sprintId') || '',
+    issueType: params.get('issueType') || '',
+    startDate: params.get('startDate') || '',
+    endDate: params.get('endDate') || '',
+  };
+}
+
+function toQuery(filters: Filters) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+  return params;
+}
 
 export function DashboardLayout() {
-  const [filters, setFilters] = useState<Filters>({ projectKey: '', sprintId: '', issueType: '' });
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState<Filters>(() => filtersFromParams(searchParams));
   const [data, setData] = useState<DashboardPayload | null>(null);
+  const [issues, setIssues] = useState<IssuePagePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [issuePage, setIssuePage] = useState(1);
   const [issuePageSize, setIssuePageSize] = useState(25);
 
+  const replaceFilters = useCallback((next: Filters) => {
+    setFilters(next);
+    const query = toQuery(next).toString();
+    router.replace((query ? `${pathname}?${query}` : pathname) as never, { scroll: false });
+  }, [pathname, router]);
+
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
       try {
-        setLoading(true);
+        if (!data) setLoading(true);
         setError(null);
-        const params = new URLSearchParams();
-        if (filters.projectKey) params.set('projectKey', filters.projectKey);
-        if (filters.sprintId) params.set('sprintId', filters.sprintId);
-        if (filters.issueType) params.set('issueType', filters.issueType);
-        const response = await fetch(`/api/jira?${params}`, { signal: controller.signal, cache: 'no-store' });
+        const response = await fetch(`/api/jira?${toQuery(filters)}`, { signal: controller.signal, cache: 'no-store' });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.detail || payload.details || 'Failed to load dashboard data.');
         setData(payload as DashboardPayload);
       } catch (requestError) {
         if (requestError instanceof Error && requestError.name !== 'AbortError') setError(requestError.message);
-      } finally { if (!controller.signal.aborted) setLoading(false); }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
     }
     load();
     return () => controller.abort();
@@ -52,24 +95,246 @@ export function DashboardLayout() {
 
   useEffect(() => setIssuePage(1), [filters, issuePageSize]);
 
-  const metrics = useMemo(() => data ? [
-    { title: 'Total issues', value: data.metrics.totalIssues, icon: FolderKanban, tone: 'cyan' as const },
-    { title: 'Completion rate', value: data.metrics.completionRate, suffix: '%', decimals: 1, icon: Gauge, tone: 'mint' as const },
-    { title: 'Velocity', value: data.metrics.velocity, icon: Activity, tone: 'violet' as const },
-    { title: 'Avg cycle time', value: data.metrics.avgCycleTimeDays, suffix: 'days', decimals: 1, icon: TimerReset, tone: 'amber' as const },
-  ] : [], [data]);
-  const totalPages = Math.max(1, Math.ceil((data?.issues.length || 0) / issuePageSize));
-  const visibleIssues = data?.issues.slice((issuePage - 1) * issuePageSize, issuePage * issuePageSize) || [];
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadIssues() {
+      const params = toQuery(filters);
+      params.set('page', String(issuePage));
+      params.set('pageSize', String(issuePageSize));
+      const response = await fetch(`/api/jira/issues?${params}`, { signal: controller.signal, cache: 'no-store' });
+      const payload = await response.json();
+      if (response.ok) setIssues(payload as IssuePagePayload);
+    }
+    loadIssues().catch(() => undefined);
+    return () => controller.abort();
+  }, [filters, issuePage, issuePageSize]);
 
-  return <main className="min-h-screen px-4 py-5 text-slate-900 sm:px-6 lg:px-8 dark:text-white"><div className="mx-auto max-w-[1440px] space-y-5">
-    <header className="glass-card flex flex-col gap-5 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between"><div><div className="mb-3 flex items-center gap-2"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)]" /><span className="eyebrow text-emerald-600 dark:text-emerald-300">Live Jira insights</span></div><h1 className="font-display text-3xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-4xl">Operations, in focus.</h1><p className="mt-2 max-w-xl text-sm text-slate-500 dark:text-slate-400">A clear view across delivery health, issue flow, and sprint momentum.</p></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="eyebrow">Source</p><p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">{data?.meta?.source === 'jira' ? 'Jira Cloud' : 'Connecting'}</p></div><ThemeToggle /></div></header>
-    <section className="glass-card flex flex-wrap items-center gap-3 p-4"><div className="flex items-center gap-2 pr-2 text-sm font-medium text-slate-700 dark:text-slate-200"><Filter className="h-4 w-4 text-cyan-500" />Filters</div><select aria-label="Project" value={filters.projectKey} onChange={(event) => setFilters((current) => ({ ...current, projectKey: event.target.value }))} className="control"><option value="">All projects</option>{data?.projects.map((project) => <option key={project.id} value={project.key}>{project.name}</option>)}</select><select aria-label="Sprint" value={filters.sprintId} onChange={(event) => setFilters((current) => ({ ...current, sprintId: event.target.value }))} className="control"><option value="">All sprints</option>{data?.sprints.map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}</select><select aria-label="Issue type" value={filters.issueType} onChange={(event) => setFilters((current) => ({ ...current, issueType: event.target.value }))} className="control"><option value="">All types</option>{data?.issueTypes.map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}</select><button type="button" onClick={() => setFilters({ projectKey: '', sprintId: '', issueType: '' })} className="control font-medium text-cyan-600 dark:text-cyan-300">Reset</button></section>
-    {error ? <div className="glass-card border-red-300/70 bg-red-50/70 p-4 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300">{error}</div> : null}
-    {loading ? <Skeleton /> : data ? <>
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{metrics.map((metric, index) => <MetricCard key={metric.title} {...metric} delay={index * 0.07} />)}</section>
-      <section className="grid gap-5 xl:grid-cols-[0.9fr_1.4fr]"><StatusDistributionChart data={data.metrics.statusBreakdown} /><ThroughputTrendChart data={data.metrics.createdVsResolved} /></section>
-      <section className="grid gap-5 xl:grid-cols-2"><VelocityChart data={data.metrics.velocityTrend} /><motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.4 }} className="glass-card p-5"><div className="mb-5 flex items-center justify-between"><div><p className="eyebrow">Signal board</p><h2 className="section-title">Operational summary</h2></div><BarChart3 className="h-5 w-5 text-cyan-500" /></div><div className="grid gap-3 sm:grid-cols-2">{[['Open issues', data.metrics.statusBreakdown.find((item) => item.name === 'Open')?.value || 0], ['Blocked items', data.metrics.statusBreakdown.find((item) => item.name === 'Blocked')?.value || 0], ['Avg throughput', Math.round(data.metrics.createdVsResolved.reduce((sum, item) => sum + item.resolved, 0) / Math.max(data.metrics.createdVsResolved.length, 1))], ['Data source', 'Jira Cloud']].map(([label, value]) => <div key={String(label)} className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 dark:border-slate-700/70 dark:bg-slate-800/50"><p className="text-xs text-slate-500 dark:text-slate-400">{label}</p><p className="mt-2 font-display text-xl font-semibold text-slate-950 dark:text-white">{value}</p></div>)}</div></motion.section></section>
-      <section className="glass-card overflow-hidden p-5"><div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="eyebrow">Live work queue</p><h2 className="section-title">Issues</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{data.issues.length} Jira issues loaded</p></div><label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">Per page<select value={issuePageSize} onChange={(event) => setIssuePageSize(Number(event.target.value))} className="control py-1.5"><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label></div><div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm"><thead className="border-b border-slate-200/80 text-[10px] uppercase tracking-wider text-slate-500 dark:border-slate-700/80"><tr><th className="px-3 py-3">Key</th><th className="px-3 py-3">Summary</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Type</th><th className="px-3 py-3">Updated</th></tr></thead><tbody>{visibleIssues.map((issue) => <tr key={issue.id} className="border-b border-slate-100/80 transition-colors hover:bg-cyan-50/40 dark:border-slate-800/80 dark:hover:bg-slate-800/40"><td className="px-3 py-3 font-medium text-cyan-600 dark:text-cyan-300">{issue.key}</td><td className="max-w-[420px] truncate px-3 py-3 text-slate-700 dark:text-slate-200">{issue.summary}</td><td className="px-3 py-3 text-slate-600 dark:text-slate-300">{issue.status}</td><td className="px-3 py-3 text-slate-600 dark:text-slate-300">{issue.issuetype?.name || '—'}</td><td className="px-3 py-3 text-slate-500 dark:text-slate-400">{new Date(issue.updated).toLocaleDateString()}</td></tr>)}</tbody></table></div><div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400"><span>Page {issuePage} of {totalPages}</span><div className="flex gap-2"><button type="button" aria-label="Previous issue page" disabled={issuePage === 1} onClick={() => setIssuePage((page) => Math.max(1, page - 1))} className="icon-button"><ChevronLeft className="h-4 w-4" /></button><button type="button" aria-label="Next issue page" disabled={issuePage >= totalPages} onClick={() => setIssuePage((page) => Math.min(totalPages, page + 1))} className="icon-button"><ChevronRight className="h-4 w-4" /></button></div></div></section>
-    </> : null}
-  </div></main>;
+  const metrics = useMemo(() => {
+    if (!data) return [];
+    const unit = data.metrics.velocityUnit === 'points' ? 'pts' : 'issues';
+    return [
+      { title: 'Total issues', value: data.metrics.totalIssues, icon: FolderKanban, tone: 'cyan' as const },
+      { title: 'Completion rate', value: data.metrics.completionRate, suffix: '%', decimals: 1, icon: Gauge, tone: 'mint' as const },
+      { title: `Velocity (${unit})`, value: data.metrics.velocity, decimals: 1, icon: Activity, tone: 'violet' as const },
+      { title: 'Avg cycle time', value: data.metrics.avgCycleTimeDays, suffix: 'days', decimals: 1, icon: TimerReset, tone: 'amber' as const },
+    ];
+  }, [data]);
+
+  const totalPages = Math.max(1, Math.ceil((issues?.total || 0) / issuePageSize));
+  const refreshedAt = data?.meta.lastSuccessAt || data?.meta.fetchedAt;
+  const lastSync = refreshedAt ? new Date(refreshedAt).toLocaleString() : 'Waiting for data';
+  const live = Boolean(data) && !data?.meta.stale;
+  const syncLabel = data?.meta.persistence === 'percona' ? 'Last snapshot sync' : 'Data refreshed';
+
+  return (
+    <main className="relative isolate min-h-screen px-4 py-5 text-slate-900 sm:px-6 lg:px-8 dark:text-white">
+      <AmbientBackground />
+      <div className="relative z-10 mx-auto max-w-[1440px] space-y-5">
+        <header className="sticky top-0 z-30 -mx-4 bg-gradient-to-b from-background via-background/90 to-transparent px-4 pb-3 pt-1 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <GlassCard spotlight={false} className="px-4 py-3 sm:px-5">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-[11px] font-semibold tracking-wide text-white dark:bg-white dark:text-slate-950">
+                    JA
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold tracking-tight">Jira Analytics</p>
+                    <p className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                      {data?.meta.stale ? 'Snapshot is stale' : data?.meta.persistence === 'percona' ? 'Persisted snapshot' : 'Live from Jira'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="hidden text-right sm:block">
+                    <p className="eyebrow">{syncLabel}</p>
+                    <p className="numeric mt-1 text-[11px] text-slate-700 dark:text-slate-200">{lastSync}</p>
+                  </div>
+                  <ThemeToggle />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/70 pt-3 dark:border-white/10">
+                <div className="flex items-center gap-2 pr-2 text-sm font-medium">
+                  <Filter className="h-4 w-4 text-cyan-500" />
+                  Filters
+                </div>
+                <select aria-label="Project" value={filters.projectKey} onChange={(event) => replaceFilters({ ...filters, projectKey: event.target.value })} className="control">
+                  <option value="">All projects</option>
+                  {data?.projects.map((project) => <option key={project.id} value={project.key}>{project.name}</option>)}
+                </select>
+                <select aria-label="Sprint" value={filters.sprintId} onChange={(event) => replaceFilters({ ...filters, sprintId: event.target.value })} className="control">
+                  <option value="">All sprints</option>
+                  {data?.sprints.map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}
+                </select>
+                <select aria-label="Issue type" value={filters.issueType} onChange={(event) => replaceFilters({ ...filters, issueType: event.target.value })} className="control">
+                  <option value="">All types</option>
+                  {data?.issueTypes.map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}
+                </select>
+                <input aria-label="Start date" type="date" value={filters.startDate} onChange={(event) => replaceFilters({ ...filters, startDate: event.target.value })} className="control" />
+                <input aria-label="End date" type="date" value={filters.endDate} onChange={(event) => replaceFilters({ ...filters, endDate: event.target.value })} className="control" />
+                <button type="button" onClick={() => replaceFilters({ projectKey: '', sprintId: '', issueType: '', startDate: '', endDate: '' })} className="control font-medium text-cyan-700 dark:text-cyan-300">Reset</button>
+              </div>
+            </div>
+          </GlassCard>
+        </header>
+
+        <section className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr] lg:items-end">
+          <div>
+            <p className="eyebrow mb-3">Delivery operations</p>
+            <h1 className="text-4xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-5xl">
+              Operations, <span className="text-cyan-600 dark:text-cyan-300">in focus.</span>
+            </h1>
+            <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+              Cycle time, sprint velocity, and remaining throughput — computed on the server, presented as a studio-grade ops surface.
+            </p>
+          </div>
+          <GlassCard spotlight={false} className="px-5 py-4">
+            <p className="eyebrow">Active filter</p>
+            <p className="mt-2 text-lg font-semibold">
+              {filters.projectKey || 'All projects'}
+              <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
+              {filters.sprintId ? data?.sprints.find((sprint) => String(sprint.id) === filters.sprintId)?.name || 'Sprint' : 'All sprints'}
+            </p>
+          </GlassCard>
+        </section>
+
+        {data?.meta.stale || data?.meta.lastError || data?.meta.truncated ? (
+          <GlassCard spotlight={false} className="border-amber-300/60 bg-amber-50/70 p-4 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                {data.meta.stale ? <p>Jira data is older than expected. Check backend sync or run <code className="font-mono">POST /api/v1/sync</code>.</p> : null}
+                {data.meta.truncated ? <p>This view is capped at 10,000 issues. Narrow filters or raise the snapshot window.</p> : null}
+                {data.meta.lastError ? <p className="mt-1">Last sync error: {data.meta.lastError}</p> : null}
+              </div>
+            </div>
+          </GlassCard>
+        ) : null}
+
+        {error ? (
+          <GlassCard spotlight={false} className="border-red-300/70 bg-red-50/80 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+            {error}
+          </GlassCard>
+        ) : null}
+
+        {loading && !data ? <Skeleton /> : data ? (
+          <>
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {metrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
+            </section>
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: 'Lead time', value: `${data.metrics.avgLeadTimeDays.toFixed(1)}`, unit: 'days', accent: 'from-cyan-400' },
+                { label: 'Weekly throughput', value: data.metrics.avgWeeklyThroughput.toFixed(1), unit: 'issues', accent: 'from-indigo-400' },
+                { label: 'Blocked / flagged', value: String(data.metrics.blockedCount), unit: 'open risks', accent: 'from-rose-400' },
+                { label: 'Forecast', value: data.metrics.forecast.estimatedDate || 'n/a', unit: `${data.metrics.forecast.remainingIssues} remaining · ${data.metrics.forecast.estimatedWeeks ?? '∞'} weeks`, accent: 'from-fuchsia-400' },
+              ].map((item) => (
+                <GlassCard key={item.label} className="p-4">
+                  <div className={`mb-3 h-1 w-10 rounded-full bg-gradient-to-r ${item.accent} to-transparent`} />
+                  <p className="eyebrow">{item.label}</p>
+                  <p className="numeric mt-2 text-2xl font-medium tracking-tight">{item.value}</p>
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{item.unit}</p>
+                </GlassCard>
+              ))}
+            </section>
+            <section className="grid gap-5 xl:grid-cols-[0.9fr_1.4fr]">
+              <StatusDistributionChart data={data.metrics.statusBreakdown} />
+              <ThroughputTrendChart data={data.metrics.createdVsResolved} />
+            </section>
+            <section className="grid gap-5 xl:grid-cols-2">
+              <VelocityChart data={data.metrics.velocityTrend} basis={data.metrics.velocityBasis} />
+              <WipAgingChart data={data.metrics.wipAging} />
+            </section>
+            <section className="grid gap-5 xl:grid-cols-2">
+              <AssigneeLoadChart data={data.metrics.assigneeLoad} />
+              <GlassCard className="p-5">
+                <div className="mb-5 flex items-center justify-between">
+                  <div>
+                    <p className="eyebrow">Time in status</p>
+                    <h2 className="section-title">Open work dwell</h2>
+                  </div>
+                  <BarChart3 className="h-5 w-5 text-cyan-500" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {data.metrics.timeInStatus.length ? data.metrics.timeInStatus.map((item) => (
+                    <div key={item.status} className="rounded-2xl border border-slate-200/70 bg-white/50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{item.status}</p>
+                      <p className="mt-2 numeric text-xl font-medium">{item.avgDays}d <span className="text-xs font-medium text-slate-500">· {item.count}</span></p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">No open issues in the current filter.</p>}
+                </div>
+              </GlassCard>
+            </section>
+            <GlassCard className="p-5">
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="eyebrow">Work queue</p>
+                  <h2 className="section-title">Issues</h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{issues?.total || 0} matching issues</p>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  Per page
+                  <select value={issuePageSize} onChange={(event) => setIssuePageSize(Number(event.target.value))} className="control py-1.5">
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </label>
+              </div>
+              <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-white/10">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead className="sticky top-0 bg-white/80 text-[10px] uppercase tracking-wider text-slate-500 backdrop-blur-md dark:bg-slate-950/70 dark:text-slate-400">
+                    <tr>
+                      <th className="px-4 py-3">Key</th>
+                      <th className="px-4 py-3">Summary</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Assignee</th>
+                      <th className="px-4 py-3">Pts</th>
+                      <th className="px-4 py-3">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(issues?.issues || []).map((issue) => (
+                      <tr key={issue.id} className="border-t border-slate-100/80 transition-colors hover:bg-cyan-50/50 dark:border-white/[0.04] dark:hover:bg-cyan-400/[0.04]">
+                        <td className="px-4 py-3 font-mono text-[12px] font-medium text-cyan-700 dark:text-cyan-300">
+                          {data.meta.browseBaseUrl ? (
+                            <a href={`${data.meta.browseBaseUrl}/${issue.key}`} target="_blank" rel="noreferrer" className="hover:underline">{issue.key}</a>
+                          ) : issue.key}
+                          {issue.flagged ? <span className="ml-2 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rose-600 dark:text-rose-300">blocked</span> : null}
+                        </td>
+                        <td className="max-w-[420px] truncate px-4 py-3 text-slate-700 dark:text-slate-200">{issue.summary}</td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-full border border-slate-200/80 bg-white/70 px-2.5 py-1 text-[11px] dark:border-white/10 dark:bg-white/5">{issue.status}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400/40 to-indigo-500/40 text-[9px] font-semibold">{initials(issue.assignee)}</span>
+                            <span className="text-slate-600 dark:text-slate-300">{issue.assignee || 'Unassigned'}</span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-slate-600 dark:text-slate-300">{issue.storyPoints ?? '—'}</td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">{new Date(issue.updated).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span>Page {issuePage} of {totalPages}</span>
+                <div className="flex gap-2">
+                  <button type="button" aria-label="Previous issue page" disabled={issuePage === 1} onClick={() => setIssuePage((page) => Math.max(1, page - 1))} className="icon-button">
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button type="button" aria-label="Next issue page" disabled={issuePage >= totalPages} onClick={() => setIssuePage((page) => Math.min(totalPages, page + 1))} className="icon-button">
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </GlassCard>
+          </>
+        ) : null}
+      </div>
+    </main>
+  );
 }

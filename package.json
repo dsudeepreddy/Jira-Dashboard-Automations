@@ -6,8 +6,11 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
+    "sync:shared": "node backend/scripts/sync-shared.cjs",
     "lint": "next lint",
-    "test": "node --test tests/*.test.mjs"
+    "test:unit": "npx tsc shared/analytics.ts shared/dashboardContract.ts --rootDir shared --outDir tests/.tmp --module commonjs --target ES2022 --esModuleInterop --skipLibCheck && node --test tests/analytics.test.mjs",
+    "test:api": "node --test tests/api.test.mjs",
+    "test": "npm run test:unit"
   },
   "dependencies": {
     "axios": "^1.7.3",

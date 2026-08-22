@@ -69,6 +69,13 @@ async function withDatabaseConnection(operation) {
         connection.release();
     }
 }
+async function ensureColumn(database, table, column, definition) {
+    const [rows] = await database.query(`SELECT COUNT(*) AS present FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`, [env_1.env.DB_NAME, table, column]);
+    if (Number(rows[0]?.present || 0) === 0) {
+        await database.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+    }
+}
 async function initializeDatabase() {
     if (!env_1.env.DB_ENABLED)
         return;
@@ -81,6 +88,13 @@ async function initializeDatabase() {
     for (const statement of schema.split(';').map((part) => part.trim()).filter(Boolean)) {
         await database.query(statement);
     }
+    await ensureColumn(database, 'jira_issues', 'status_category', 'VARCHAR(64) NULL');
+    await ensureColumn(database, 'jira_issues', 'assignee', 'VARCHAR(255) NULL');
+    await ensureColumn(database, 'jira_issues', 'story_points', 'DECIMAL(10,2) NULL');
+    await ensureColumn(database, 'jira_issues', 'flagged', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await ensureColumn(database, 'jira_issues', 'in_progress_at', 'DATETIME(3) NULL');
+    await ensureColumn(database, 'jira_issues', 'last_status_changed_at', 'DATETIME(3) NULL');
+    await ensureColumn(database, 'jira_sync_state', 'last_issue_updated_at', 'DATETIME(3) NULL');
 }
 async function checkDatabase() {
     const database = getDatabasePool();

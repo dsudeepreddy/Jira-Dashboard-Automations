@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import { z } from 'zod';
 
 dotenv.config();
+dotenv.config({ path: '../.env.local' });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -18,9 +19,12 @@ const envSchema = z.object({
     (value) => (value === '' || value === undefined ? undefined : value),
     z.coerce.number().int().positive().optional(),
   ),
+  JIRA_STORY_POINTS_FIELD: z.string().default('customfield_10016'),
+  JIRA_SPRINT_FIELD: z.string().default('customfield_10020'),
+  JIRA_LOOKBACK_DAYS: z.coerce.number().int().positive().max(730).default(120),
   CACHE_TTL_MS: z.coerce.number().default(60000),
-  JIRA_MAX_ISSUES: z.coerce.number().int().positive().max(5000).default(1000),
-  JIRA_PAGE_SIZE: z.coerce.number().int().positive().max(100).default(100),
+  JIRA_MAX_ISSUES: z.coerce.number().int().positive().max(10000).default(1000),
+  JIRA_PAGE_SIZE: z.coerce.number().int().positive().max(100).default(50),
   DB_ENABLED: z.preprocess((value) => value === 'true' || value === true, z.boolean().default(false)),
   DB_AUTO_CREATE: z.preprocess((value) => value === 'true' || value === true, z.boolean().default(false)),
   DB_HOST: z.string().default('percona-proxy'),
@@ -33,6 +37,10 @@ const envSchema = z.object({
   DB_CONNECTION_LIMIT: z.coerce.number().int().positive().max(100).default(10),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   LOG_LEVEL: z.string().default('info'),
+  SYNC_API_TOKEN: z.string().optional().or(z.literal('')),
+  BACKEND_API_TOKEN: z.string().optional().or(z.literal('')),
+  SYNC_INTERVAL_MS: z.coerce.number().int().min(0).default(900000),
+  STALE_AFTER_MS: z.coerce.number().int().positive().default(1800000),
 });
 
 export const env = envSchema.parse(process.env);

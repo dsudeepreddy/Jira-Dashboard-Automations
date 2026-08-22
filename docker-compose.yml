@@ -1,0 +1,91 @@
+version: '3.9'
+
+services:
+  redis-cache:
+    image: redis:7-alpine
+    container_name: jira-redis-cache
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1", "--loglevel", "notice"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - jira-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jira-backend-api
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+    env_file:
+      - .env.local
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      REDIS_HOST: redis-cache
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      CACHE_TTL_MS: ${CACHE_TTL_MS:-60000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://frontend-app:3000}
+    ports:
+      - "5001:5000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/api/v1/health >/dev/null || curl -fsS http://localhost:5000/api/v1/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - jira-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jira-frontend-app
+    depends_on:
+      backend-api:
+        condition: service_healthy
+    environment:
+      BACKEND_API_URL: http://backend-api:5000/api/v1
+      NEXT_PUBLIC_BACKEND_API_URL: ${NEXT_PUBLIC_BACKEND_API_URL:-http://backend-api:5000/api/v1}
+      NODE_ENV: development
+      PORT: 3000
+      JIRA_DOMAIN: ${JIRA_DOMAIN:-https://yourcompany.atlassian.net}
+      JIRA_EMAIL: ${JIRA_EMAIL:-}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
+      JIRA_PROJECT_KEY: ${JIRA_PROJECT_KEY:-}
+    ports:
+      - "3000:3000"
+    networks:
+      - jira-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  redis_data:
+
+networks:
+  jira-network:
+    driver: bridge

@@ -20,6 +20,11 @@ Next.js UI plus an Express analytics API. The browser never talks to Jira. Metri
 
 Edit analytics in `shared/`, then run `npm run sync:shared` (also runs on `backend` `dev` / `build` when `../shared` exists).
 
+## Documentation
+
+- Technical specification (architecture, APIs, metrics, ops): [docs/TECHNICAL.md](docs/TECHNICAL.md)
+- Slide deck: [docs/project-overview-slides.html](docs/project-overview-slides.html)
+
 ## Data modes
 
 | Mode | When | Header label |

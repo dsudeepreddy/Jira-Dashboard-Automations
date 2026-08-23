@@ -114,3 +114,29 @@ test('velocity falls back to ISO weeks when sprint membership is missing', () =>
   assert.equal(metrics.velocityTrend[0].period, '2026-W02');
   assert.equal(metrics.velocityTrend[0].actual, 3);
 });
+
+test('createdDateJql applies each bound independently and makes the end date inclusive', () => {
+  const { createdDateJql, shiftIsoDate } = require('./.tmp/analytics.js');
+  assert.equal(shiftIsoDate('2026-08-23', 1), '2026-08-24');
+  assert.equal(createdDateJql('2026-08-21', '2026-08-23'), 'created >= "2026-08-21" AND created < "2026-08-24"');
+  assert.equal(createdDateJql('2026-08-21', undefined), 'created >= "2026-08-21"');
+  assert.equal(createdDateJql(undefined, '2026-08-23'), 'created < "2026-08-24"');
+  assert.equal(createdDateJql(undefined, undefined), null);
+});
+
+test('date filters are inclusive and still apply when a sprint is selected', () => {
+  const issues = [
+    { id: '1', key: 'APP-1', summary: 'Day 21', status: 'To Do', created: '2026-08-21T08:00:00.000Z', updated: '2026-08-21T08:00:00.000Z', sprintIds: [7] },
+    { id: '2', key: 'APP-2', summary: 'Day 23', status: 'To Do', created: '2026-08-23T18:00:00.000Z', updated: '2026-08-23T18:00:00.000Z', sprintIds: [7] },
+    { id: '3', key: 'APP-3', summary: 'Day 24', status: 'To Do', created: '2026-08-24T08:00:00.000Z', updated: '2026-08-24T08:00:00.000Z', sprintIds: [7] },
+  ];
+
+  const sameDay = aggregateDashboardMetrics(issues, [], { startDate: '2026-08-23', endDate: '2026-08-23' });
+  assert.equal(sameDay.totalIssues, 1);
+
+  const startOnly = aggregateDashboardMetrics(issues, [], { startDate: '2026-08-23' });
+  assert.equal(startOnly.totalIssues, 2);
+
+  const sprintAndDates = aggregateDashboardMetrics(issues, [], { sprintId: 7, startDate: '2026-08-21', endDate: '2026-08-21' });
+  assert.equal(sprintAndDates.totalIssues, 1);
+});

@@ -20,6 +20,8 @@ type Filters = {
   endDate: string;
 };
 
+const EMPTY_FILTERS: Filters = { projectKey: '', sprintId: '', issueType: '', startDate: '', endDate: '' };
+
 function Skeleton() {
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -60,6 +62,7 @@ export function DashboardLayout() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [filters, setFilters] = useState<Filters>(() => filtersFromParams(searchParams));
+  const [draft, setDraft] = useState<Filters>(() => filtersFromParams(searchParams));
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [issues, setIssues] = useState<IssuePagePayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,11 +70,23 @@ export function DashboardLayout() {
   const [issuePage, setIssuePage] = useState(1);
   const [issuePageSize, setIssuePageSize] = useState(25);
 
-  const replaceFilters = useCallback((next: Filters) => {
+  const dirty = JSON.stringify(draft) !== JSON.stringify(filters);
+  const urlQuery = searchParams.toString();
+  const invalidRange = Boolean(draft.startDate && draft.endDate && draft.startDate > draft.endDate);
+  const dateSummary = [filters.startDate, filters.endDate].filter(Boolean).join(' → ') || 'Any created date';
+
+  const commitFilters = useCallback((next: Filters) => {
     setFilters(next);
+    setDraft(next);
     const query = toQuery(next).toString();
     router.replace((query ? `${pathname}?${query}` : pathname) as never, { scroll: false });
   }, [pathname, router]);
+
+  useEffect(() => {
+    const fromUrl = filtersFromParams(new URLSearchParams(urlQuery));
+    setFilters(fromUrl);
+    setDraft(fromUrl);
+  }, [urlQuery]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -81,6 +96,7 @@ export function DashboardLayout() {
         setError(null);
         const response = await fetch(`/api/jira?${toQuery(filters)}`, { signal: controller.signal, cache: 'no-store' });
         const payload = await response.json();
+        if (controller.signal.aborted) return;
         if (!response.ok) throw new Error(payload.detail || payload.details || 'Failed to load dashboard data.');
         setData(payload as DashboardPayload);
       } catch (requestError) {
@@ -103,6 +119,7 @@ export function DashboardLayout() {
       params.set('pageSize', String(issuePageSize));
       const response = await fetch(`/api/jira/issues?${params}`, { signal: controller.signal, cache: 'no-store' });
       const payload = await response.json();
+      if (controller.signal.aborted) return;
       if (response.ok) setIssues(payload as IssuePagePayload);
     }
     loadIssues().catch(() => undefined);
@@ -159,21 +176,50 @@ export function DashboardLayout() {
                   <Filter className="h-4 w-4 text-cyan-500" />
                   Filters
                 </div>
-                <select aria-label="Project" value={filters.projectKey} onChange={(event) => replaceFilters({ ...filters, projectKey: event.target.value })} className="control">
+                <select aria-label="Project" value={draft.projectKey} onChange={(event) => setDraft({ ...draft, projectKey: event.target.value })} className="control">
                   <option value="">All projects</option>
                   {data?.projects.map((project) => <option key={project.id} value={project.key}>{project.name}</option>)}
                 </select>
-                <select aria-label="Sprint" value={filters.sprintId} onChange={(event) => replaceFilters({ ...filters, sprintId: event.target.value })} className="control">
+                <select aria-label="Sprint" value={draft.sprintId} onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })} className="control">
                   <option value="">All sprints</option>
                   {data?.sprints.map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}
                 </select>
-                <select aria-label="Issue type" value={filters.issueType} onChange={(event) => replaceFilters({ ...filters, issueType: event.target.value })} className="control">
+                <select aria-label="Issue type" value={draft.issueType} onChange={(event) => setDraft({ ...draft, issueType: event.target.value })} className="control">
                   <option value="">All types</option>
                   {data?.issueTypes.map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}
                 </select>
-                <input aria-label="Start date" type="date" value={filters.startDate} onChange={(event) => replaceFilters({ ...filters, startDate: event.target.value })} className="control" />
-                <input aria-label="End date" type="date" value={filters.endDate} onChange={(event) => replaceFilters({ ...filters, endDate: event.target.value })} className="control" />
-                <button type="button" onClick={() => replaceFilters({ projectKey: '', sprintId: '', issueType: '', startDate: '', endDate: '' })} className="control font-medium text-cyan-700 dark:text-cyan-300">Reset</button>
+                <label className="flex items-center gap-1.5">
+                  <span className="sr-only">Created from</span>
+                  <input
+                    aria-label="Created from"
+                    type="date"
+                    value={draft.startDate}
+                    max={draft.endDate || undefined}
+                    onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
+                    className="control min-w-[10.5rem]"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <span className="sr-only">Created to</span>
+                  <input
+                    aria-label="Created to"
+                    type="date"
+                    value={draft.endDate}
+                    min={draft.startDate || undefined}
+                    onChange={(event) => setDraft({ ...draft, endDate: event.target.value })}
+                    className="control min-w-[10.5rem]"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => commitFilters(draft)}
+                  disabled={!dirty || invalidRange}
+                  className="rounded-xl bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400"
+                >
+                  {loading && data ? 'Applying…' : 'Apply'}
+                </button>
+                <button type="button" onClick={() => commitFilters(EMPTY_FILTERS)} className="control font-medium text-slate-600 dark:text-slate-300">Reset</button>
+                {invalidRange ? <p className="w-full text-xs text-amber-700 dark:text-amber-300">Created from must be on or before Created to.</p> : null}
               </div>
             </div>
           </GlassCard>
@@ -196,6 +242,7 @@ export function DashboardLayout() {
               <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
               {filters.sprintId ? data?.sprints.find((sprint) => String(sprint.id) === filters.sprintId)?.name || 'Sprint' : 'All sprints'}
             </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{dateSummary}</p>
           </GlassCard>
         </section>
 

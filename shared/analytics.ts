@@ -71,6 +71,31 @@ export function toSafeDate(value?: string | null): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/** Shift a YYYY-MM-DD calendar date by a number of days. */
+export function shiftIsoDate(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  if (!year || !month || !day) return isoDate;
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+/** Inclusive YYYY-MM-DD comparison against the UTC calendar date of `created`. */
+export function isInCreatedDateRange(created: string | null | undefined, startDate?: string, endDate?: string): boolean {
+  const instant = toSafeDate(created);
+  if (!instant) return !startDate && !endDate;
+  const day = instant.toISOString().slice(0, 10);
+  if (startDate && day < startDate) return false;
+  if (endDate && day > endDate) return false;
+  return true;
+}
+
+/** Jira treats a date-only literal as midnight, so the end bound is exclusive next day. */
+export function createdDateJql(startDate?: string, endDate?: string): string | null {
+  const parts: string[] = [];
+  if (startDate) parts.push(`created >= "${startDate}"`);
+  if (endDate) parts.push(`created < "${shiftIsoDate(endDate, 1)}"`);
+  return parts.length ? parts.join(' AND ') : null;
+}
+
 export function daysBetween(start: Date, end: Date): number {
   return Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 }
@@ -164,11 +189,7 @@ function matchesFilters(issue: AnalyticsIssue, filters: DashboardFilters): boole
   if (filters.projectKey && issue.projectKey && issue.projectKey !== filters.projectKey) return false;
   if (filters.issueType && issue.issueType !== filters.issueType) return false;
   if (filters.sprintId && !(issue.sprintIds || []).includes(filters.sprintId)) return false;
-  // Sprint membership already defines the window; created-date filters would drop older sprint items.
-  if (filters.sprintId) return true;
-  const created = toSafeDate(issue.created);
-  if (filters.startDate && created && created < new Date(`${filters.startDate}T00:00:00.000Z`)) return false;
-  if (filters.endDate && created && created > new Date(`${filters.endDate}T23:59:59.999Z`)) return false;
+  if (!isInCreatedDateRange(issue.created, filters.startDate, filters.endDate)) return false;
   return true;
 }
 

@@ -3,6 +3,7 @@ import { env, maskSecret } from '../config/env';
 import { redisCache } from '../cache/redisClient';
 import {
   categoryForStatus,
+  createdDateJql,
   deriveFlowTimestamps,
   type AnalyticsIssue,
   type AnalyticsSprint,
@@ -253,9 +254,8 @@ export class JiraClient {
     if (projectKey) parts.push(`project = "${projectKey.replace(/"/g, '\\"')}"`);
     if (filters.sprintId) parts.push(`sprint = ${filters.sprintId}`);
     if (filters.issueType) parts.push(`issuetype = "${filters.issueType.replace(/"/g, '\\"')}"`);
-    if (filters.startDate && filters.endDate) {
-      parts.push(`created >= "${filters.startDate}" AND created <= "${filters.endDate}"`);
-    }
+    const createdRange = createdDateJql(filters.startDate, filters.endDate);
+    if (createdRange) parts.push(`(${createdRange})`);
     if (filters.updatedSince) {
       parts.push(`updated >= "${toJqlDate(filters.updatedSince)}"`);
     } else if (!filters.unbounded && !filters.startDate && !filters.endDate) {

@@ -1,7 +1,7 @@
 import type { RowDataPacket } from 'mysql2/promise';
 import { withDatabaseConnection } from './database';
 import type { JiraIssue, JiraIssueType, JiraProject, JiraSprint, JiraIssueStatus } from '../services/jiraClient';
-import type { AnalyticsIssue, AnalyticsSprint } from '../shared/analytics';
+import { shiftIsoDate, type AnalyticsIssue, type AnalyticsSprint } from '../shared/analytics';
 
 function toMysqlDate(value?: string | null) {
   return value ? new Date(value).toISOString().slice(0, 23).replace('T', ' ') : null;
@@ -138,10 +138,9 @@ function issueWhere(filters: { projectKey?: string; issueType?: string; startDat
   if (filters.sprintId) {
     clauses.push('EXISTS (SELECT 1 FROM jira_issue_sprints s WHERE s.issue_id = i.id AND s.sprint_id = ?)');
     values.push(filters.sprintId);
-  } else {
-    if (filters.startDate) { clauses.push('i.created_at >= ?'); values.push(`${filters.startDate} 00:00:00`); }
-    if (filters.endDate) { clauses.push('i.created_at <= ?'); values.push(`${filters.endDate} 23:59:59`); }
   }
+  if (filters.startDate) { clauses.push('i.created_at >= ?'); values.push(`${filters.startDate} 00:00:00`); }
+  if (filters.endDate) { clauses.push('i.created_at < ?'); values.push(`${shiftIsoDate(filters.endDate, 1)} 00:00:00`); }
   return { sql: clauses.join(' AND '), values };
 }
 

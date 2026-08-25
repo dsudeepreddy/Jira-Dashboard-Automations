@@ -23,6 +23,15 @@ type Filters = {
 
 const EMPTY_FILTERS: Filters = { projectKey: '', sprintId: '', issueType: '', startDate: '', endDate: '' };
 
+const ISSUE_SORT_OPTIONS = [
+  { value: 'updated-desc', label: 'Latest updated' },
+  { value: 'updated-asc', label: 'Oldest updated' },
+  { value: 'created-desc', label: 'Latest created' },
+  { value: 'created-asc', label: 'Oldest created' },
+  { value: 'key-asc', label: 'Key A–Z' },
+  { value: 'key-desc', label: 'Key Z–A' },
+] as const;
+
 function Skeleton() {
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -70,6 +79,7 @@ export function DashboardLayout() {
   const [error, setError] = useState<string | null>(null);
   const [issuePage, setIssuePage] = useState(1);
   const [issuePageSize, setIssuePageSize] = useState(25);
+  const [issueSort, setIssueSort] = useState('updated-desc');
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(filters);
   const urlQuery = searchParams.toString();
@@ -110,7 +120,7 @@ export function DashboardLayout() {
     return () => controller.abort();
   }, [filters]);
 
-  useEffect(() => setIssuePage(1), [filters, issuePageSize]);
+  useEffect(() => setIssuePage(1), [filters, issuePageSize, issueSort]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -118,6 +128,7 @@ export function DashboardLayout() {
       const params = toQuery(filters);
       params.set('page', String(issuePage));
       params.set('pageSize', String(issuePageSize));
+      params.set('sort', issueSort);
       const response = await fetch(`/api/jira/issues?${params}`, { signal: controller.signal, cache: 'no-store' });
       const payload = await response.json();
       if (controller.signal.aborted) return;
@@ -125,7 +136,7 @@ export function DashboardLayout() {
     }
     loadIssues().catch(() => undefined);
     return () => controller.abort();
-  }, [filters, issuePage, issuePageSize]);
+  }, [filters, issuePage, issuePageSize, issueSort]);
 
   const metrics = useMemo(() => {
     if (!data) return [];
@@ -354,14 +365,24 @@ export function DashboardLayout() {
                   <h2 className="section-title">Issues</h2>
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{issues?.total || 0} matching issues</p>
                 </div>
-                <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  Per page
-                  <select value={issuePageSize} onChange={(event) => setIssuePageSize(Number(event.target.value))} className="control py-1.5">
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                  </select>
-                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    Sort
+                    <select value={issueSort} onChange={(event) => setIssueSort(event.target.value)} className="control py-1.5">
+                      {ISSUE_SORT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    Per page
+                    <select value={issuePageSize} onChange={(event) => setIssuePageSize(Number(event.target.value))} className="control py-1.5">
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </label>
+                </div>
               </div>
               <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-white/10">
                 <table className="w-full min-w-[760px] text-left text-sm">
@@ -407,7 +428,7 @@ export function DashboardLayout() {
                           </span>
                         </td>
                         <td className="px-4 py-3 tabular-nums text-slate-600 dark:text-slate-300">{issue.storyPoints ?? '—'}</td>
-                        <td className="px-4 py-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">{new Date(issue.updated).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">{new Date(issue.updated).toLocaleString()}</td>
                       </tr>
                       );
                     })}

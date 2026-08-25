@@ -37,6 +37,7 @@ type SearchFilters = {
   updatedSince?: string;
   lookbackDays?: number;
   unbounded?: boolean;
+  orderBy?: string;
 };
 
 function parseSprints(raw: unknown): AnalyticsSprint[] {
@@ -361,7 +362,9 @@ export class JiraClient {
       parts.push(`updated >= -${filters.lookbackDays || env.JIRA_LOOKBACK_DAYS}d`);
     }
 
-    const jql = `${parts.join(' AND ')} ORDER BY updated ASC`;
+    const allowedOrder = new Set(['updated ASC', 'updated DESC', 'created ASC', 'created DESC', 'key ASC', 'key DESC']);
+    const orderBy = filters.orderBy && allowedOrder.has(filters.orderBy) ? filters.orderBy : 'updated ASC';
+    const jql = `${parts.join(' AND ')} ORDER BY ${orderBy}`;
     const issues: JiraIssue[] = [];
     const discoveredSprints = new Map<number, AnalyticsSprint>();
     let nextPageToken: string | undefined;

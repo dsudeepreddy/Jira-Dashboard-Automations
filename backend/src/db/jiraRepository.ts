@@ -194,6 +194,7 @@ export async function getStoredIssuesPage(
   filters: { projectKey?: string; issueType?: string; startDate?: string; endDate?: string; sprintId?: number } = {},
   page = 1,
   pageSize = 25,
+  orderBy = 'i.updated_at DESC',
 ) {
   return withDatabaseConnection(async (connection) => {
     const { sql, values } = issueWhere(filters);
@@ -201,10 +202,16 @@ export async function getStoredIssuesPage(
     const total = Number(countRows[0]?.total || 0);
     const safePageSize = Math.min(100, Math.max(1, Math.trunc(pageSize)));
     const offset = Math.max(0, (Math.max(1, Math.trunc(page)) - 1) * safePageSize);
+    const allowedOrder = new Set([
+      'i.updated_at DESC', 'i.updated_at ASC',
+      'i.created_at DESC', 'i.created_at ASC',
+      'i.issue_key ASC', 'i.issue_key DESC',
+    ]);
+    const sortSql = allowedOrder.has(orderBy) ? orderBy : 'i.updated_at DESC';
     const [rows] = await connection.execute<RowDataPacket[]>(
       `SELECT id, issue_key, project_key, summary, status, status_category, issue_type, assignee, story_points,
               flagged, created_at, updated_at, resolved_at, in_progress_at, last_status_changed_at
-       FROM jira_issues i WHERE ${sql} ORDER BY i.updated_at DESC LIMIT ${safePageSize} OFFSET ${offset}`,
+       FROM jira_issues i WHERE ${sql} ORDER BY ${sortSql} LIMIT ${safePageSize} OFFSET ${offset}`,
       values,
     );
     return { total, issues: rows.map((row) => mapIssueRow(row)) };

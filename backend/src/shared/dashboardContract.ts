@@ -6,6 +6,13 @@ export interface DashboardFilters {
   endDate?: string;
 }
 
+/** Official Atlassian browse URL. Do not derive this from JIRA_DOMAIN (API/proxy hosts). */
+export const ATLASSIAN_BROWSE_BASE_URL = 'https://phonepe.atlassian.net/browse';
+
+export function atlassianIssueUrl(issueKey: string) {
+  return `${ATLASSIAN_BROWSE_BASE_URL}/${issueKey}`;
+}
+
 export interface DashboardIssue {
   id: string;
   key: string;

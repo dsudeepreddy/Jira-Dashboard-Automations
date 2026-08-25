@@ -12,6 +12,7 @@ import {
 import { isDatabaseEnabled } from '../db/database';
 import { aggregateDashboardMetrics } from '../shared/analytics';
 import type { AnalyticsSprint } from '../shared/analytics';
+import { ATLASSIAN_BROWSE_BASE_URL } from '../shared/dashboardContract';
 import { env } from '../config/env';
 
 const filtersSchema = z.object({
@@ -93,7 +94,7 @@ export async function getMetricsHandler(req: Request, res: Response, next: NextF
         lastError: syncState?.last_error || null,
         stale,
         truncated: dbEnabled ? issues.length >= 10000 : issues.length >= env.JIRA_MAX_ISSUES,
-        browseBaseUrl: `${env.JIRA_DOMAIN.replace(/\/+$/, '')}/browse`,
+        browseBaseUrl: ATLASSIAN_BROWSE_BASE_URL,
       },
     });
   } catch (error) {

@@ -4,6 +4,7 @@ import { AlertTriangle, BarChart3, ChevronLeft, ChevronRight, Filter, FolderKanb
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DashboardPayload, IssuePagePayload } from '@/shared/dashboardContract';
+import { atlassianIssueUrl } from '@/shared/dashboardContract';
 import { AmbientBackground } from './AmbientBackground';
 import { GlassCard } from './GlassCard';
 import { MetricCard } from './MetricCard';
@@ -142,6 +143,23 @@ export function DashboardLayout() {
   const lastSync = refreshedAt ? new Date(refreshedAt).toLocaleString() : 'Waiting for data';
   const live = Boolean(data) && !data?.meta.stale;
   const syncLabel = data?.meta.persistence === 'percona' ? 'Last snapshot sync' : 'Data refreshed';
+  const projectOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return (data?.projects || []).filter((project) => {
+      if (!project.key || seen.has(project.key)) return false;
+      seen.add(project.key);
+      return true;
+    });
+  }, [data?.projects]);
+  const issueTypeOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return (data?.issueTypes || []).filter((type) => {
+      const name = type.name.trim().toLowerCase();
+      if (!name || seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    });
+  }, [data?.issueTypes]);
 
   return (
     <main className="relative isolate min-h-screen px-4 py-5 text-slate-900 sm:px-6 lg:px-8 dark:text-white">
@@ -178,7 +196,7 @@ export function DashboardLayout() {
                 </div>
                 <select aria-label="Project" value={draft.projectKey} onChange={(event) => setDraft({ ...draft, projectKey: event.target.value })} className="control">
                   <option value="">All projects</option>
-                  {data?.projects.map((project) => <option key={project.id} value={project.key}>{project.name}</option>)}
+                  {projectOptions.map((project) => <option key={project.id} value={project.key}>{project.name}</option>)}
                 </select>
                 <select aria-label="Sprint" value={draft.sprintId} onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })} className="control">
                   <option value="">All sprints</option>
@@ -186,7 +204,7 @@ export function DashboardLayout() {
                 </select>
                 <select aria-label="Issue type" value={draft.issueType} onChange={(event) => setDraft({ ...draft, issueType: event.target.value })} className="control">
                   <option value="">All types</option>
-                  {data?.issueTypes.map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}
+                  {issueTypeOptions.map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}
                 </select>
                 <label className="flex items-center gap-1.5">
                   <span className="sr-only">Created from</span>
@@ -342,12 +360,24 @@ export function DashboardLayout() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(issues?.issues || []).map((issue) => (
-                      <tr key={issue.id} className="border-t border-slate-100/80 transition-colors hover:bg-cyan-50/50 dark:border-white/[0.04] dark:hover:bg-cyan-400/[0.04]">
+                    {(issues?.issues || []).map((issue) => {
+                      const issueUrl = atlassianIssueUrl(issue.key);
+                      return (
+                      <tr
+                        key={issue.id}
+                        className="cursor-pointer border-t border-slate-100/80 transition-colors hover:bg-cyan-50/50 dark:border-white/[0.04] dark:hover:bg-cyan-400/[0.04]"
+                        onClick={() => window.open(issueUrl, '_blank', 'noopener,noreferrer')}
+                      >
                         <td className="px-4 py-3 font-mono text-[12px] font-medium text-cyan-700 dark:text-cyan-300">
-                          {data.meta.browseBaseUrl ? (
-                            <a href={`${data.meta.browseBaseUrl}/${issue.key}`} target="_blank" rel="noreferrer" className="hover:underline">{issue.key}</a>
-                          ) : issue.key}
+                          <a
+                            href={issueUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="hover:underline"
+                          >
+                            {issue.key}
+                          </a>
                           {issue.flagged ? <span className="ml-2 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rose-600 dark:text-rose-300">blocked</span> : null}
                         </td>
                         <td className="max-w-[420px] truncate px-4 py-3 text-slate-700 dark:text-slate-200">{issue.summary}</td>
@@ -363,7 +393,8 @@ export function DashboardLayout() {
                         <td className="px-4 py-3 tabular-nums text-slate-600 dark:text-slate-300">{issue.storyPoints ?? '—'}</td>
                         <td className="px-4 py-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">{new Date(issue.updated).toLocaleDateString()}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

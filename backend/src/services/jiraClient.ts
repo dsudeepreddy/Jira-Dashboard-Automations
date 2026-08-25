@@ -76,6 +76,24 @@ function parseSprints(raw: unknown): AnalyticsSprint[] {
   return [];
 }
 
+type JiraPage<T> = {
+  values?: T[];
+  isLast?: boolean;
+  total?: number;
+};
+
+function uniqueBy<T>(items: T[], keyOf: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  const unique: T[] = [];
+  for (const item of items) {
+    const key = keyOf(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+  return unique;
+}
+
 function parseStoryPoints(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) return Number(value);
@@ -98,6 +116,7 @@ export class JiraClient {
   private readonly restBaseUrl: string;
   private readonly agileBaseUrl: string;
   private statusLookup = new Map<string, string>();
+  private projectsCatalogLoad: Promise<{ projects: JiraProject[]; issueTypes: JiraIssueType[] }> | null = null;
 
   constructor() {
     const domain = env.JIRA_DOMAIN.replace(/\/+$/, '');
@@ -181,16 +200,78 @@ export class JiraClient {
     throw new Error('Jira retry loop exhausted');
   }
 
+  private async paginateValues<T>(baseURL: string, path: string, extraParams: Record<string, string | number> = {}, pageSize = 50): Promise<T[]> {
+    const all: T[] = [];
+    let startAt = 0;
+    for (let page = 0; page < 200; page += 1) {
+      const response = await this.withRetry(() => this.request<JiraPage<T>>(baseURL, path, {
+        params: { ...extraParams, startAt, maxResults: pageSize },
+      }));
+      const values = response.values ?? [];
+      all.push(...values);
+      const done = Boolean(response.isLast)
+        || values.length === 0
+        || values.length < pageSize
+        || (typeof response.total === 'number' && all.length >= response.total);
+      if (done) break;
+      startAt += values.length;
+    }
+    return all;
+  }
+
   async getProjects(): Promise<JiraProject[]> {
-    const cacheKey = 'jira:projects';
-    const cached = await redisCache.get<JiraProject[]>(cacheKey);
-    if (cached) return cached;
-    const response = await this.withRetry(() => this.request<{ values: JiraProject[] }>(this.restBaseUrl, '/project/search', {
-      params: { maxResults: 200 },
-    }));
-    const projects = response.values ?? [];
+    const catalog = await this.loadProjectsCatalog();
+    return catalog.projects;
+  }
+
+  private async loadProjectsCatalog(): Promise<{ projects: JiraProject[]; issueTypes: JiraIssueType[] }> {
+    if (this.projectsCatalogLoad) return this.projectsCatalogLoad;
+    this.projectsCatalogLoad = this.fetchProjectsCatalog().finally(() => {
+      this.projectsCatalogLoad = null;
+    });
+    return this.projectsCatalogLoad;
+  }
+
+  private async fetchProjectsCatalog(): Promise<{ projects: JiraProject[]; issueTypes: JiraIssueType[] }> {
+    const cacheKey = 'jira:projects:all';
+    const cachedProjects = await redisCache.get<JiraProject[]>(cacheKey);
+    const cachedTypes = await redisCache.get<JiraIssueType[]>('jira:issueTypes:fromProjects');
+    if (cachedProjects?.length) {
+      return { projects: cachedProjects, issueTypes: cachedTypes || [] };
+    }
+
+    let rows: Array<JiraProject & { issueTypes?: JiraIssueType[] }> = [];
+    try {
+      rows = await this.paginateValues<JiraProject & { issueTypes?: JiraIssueType[] }>(
+        this.restBaseUrl,
+        '/project/search',
+        { orderBy: 'name', expand: 'issueTypes' },
+        50,
+      );
+    } catch {
+      rows = await this.paginateValues<JiraProject & { issueTypes?: JiraIssueType[] }>(
+        this.restBaseUrl,
+        '/project/search',
+        { orderBy: 'name' },
+        50,
+      );
+    }
+    const projects = uniqueBy(
+      rows.map((project) => ({
+        id: String(project.id),
+        key: project.key,
+        name: project.name,
+        projectTypeKey: project.projectTypeKey,
+      })),
+      (project) => project.key,
+    ).sort((a, b) => a.name.localeCompare(b.name));
+    const issueTypes = uniqueBy(
+      rows.flatMap((project) => project.issueTypes || []),
+      (type) => String(type.id),
+    );
     await redisCache.set(cacheKey, projects);
-    return projects;
+    await redisCache.set('jira:issueTypes:fromProjects', issueTypes);
+    return { projects, issueTypes };
   }
 
   async getBoards(): Promise<Array<{ id: number; name: string }>> {
@@ -224,11 +305,29 @@ export class JiraClient {
   }
 
   async getIssueTypes(): Promise<JiraIssueType[]> {
-    const cacheKey = 'jira:issueTypes';
+    const cacheKey = 'jira:issueTypes:all';
     const cached = await redisCache.get<JiraIssueType[]>(cacheKey);
-    if (cached) return cached;
-    const response = await this.withRetry(() => this.request<JiraIssueType[]>(this.restBaseUrl, '/issuetype'));
-    const issueTypes = Array.isArray(response) ? response : [];
+    if (cached?.length) return cached;
+
+    let fromApi: JiraIssueType[] = [];
+    try {
+      fromApi = await this.paginateValues<JiraIssueType>(this.restBaseUrl, '/issuetype/search', {}, 50);
+    } catch {
+      const response = await this.withRetry(() => this.request<JiraIssueType[] | JiraPage<JiraIssueType>>(this.restBaseUrl, '/issuetype'));
+      fromApi = Array.isArray(response) ? response : response.values ?? [];
+    }
+
+    const fromProjects = (await this.loadProjectsCatalog()).issueTypes;
+
+    const issueTypes = uniqueBy(
+      [...fromApi, ...fromProjects].map((type) => ({
+        id: String(type.id),
+        name: type.name,
+        description: type.description,
+      })),
+      (type) => type.name.trim().toLowerCase(),
+    ).sort((a, b) => a.name.localeCompare(b.name));
+
     await redisCache.set(cacheKey, issueTypes);
     return issueTypes;
   }

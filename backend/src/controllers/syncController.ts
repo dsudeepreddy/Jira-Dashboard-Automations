@@ -35,8 +35,11 @@ export async function runJiraSync(full = false) {
 
   await upsertJiraSnapshot({ projects, issues, sprints, issueTypes, statuses });
   await redisCache.del('jira:projects');
+  await redisCache.del('jira:projects:all');
   await redisCache.del('jira:sprints');
   await redisCache.del('jira:issueTypes');
+  await redisCache.del('jira:issueTypes:all');
+  await redisCache.del('jira:issueTypes:fromProjects');
   await redisCache.del('jira:statuses');
 
   return { projects: projects.length, issues: issues.length, sprints: sprints.length, incremental: Boolean(updatedSince) };

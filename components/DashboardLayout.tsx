@@ -189,55 +189,71 @@ export function DashboardLayout() {
                   <ThemeToggle />
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/70 pt-3 dark:border-white/10">
-                <div className="flex items-center gap-2 pr-2 text-sm font-medium">
-                  <Filter className="h-4 w-4 text-cyan-500" />
-                  Filters
+              <div className="flex flex-col gap-2 border-t border-slate-200/70 pt-3 dark:border-white/10 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2 pr-1 text-sm font-medium">
+                    <Filter className="h-4 w-4 text-cyan-500" />
+                    Filters
+                  </div>
+                  <select
+                    aria-label="Project"
+                    title={projectOptions.find((project) => project.key === draft.projectKey)?.name || 'All projects'}
+                    value={draft.projectKey}
+                    onChange={(event) => setDraft({ ...draft, projectKey: event.target.value })}
+                    className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                  >
+                    <option value="">All projects</option>
+                    {projectOptions.map((project) => <option key={project.id} value={project.key}>{project.name}</option>)}
+                  </select>
+                  <select
+                    aria-label="Sprint"
+                    title={data?.sprints.find((sprint) => String(sprint.id) === draft.sprintId)?.name || 'All sprints'}
+                    value={draft.sprintId}
+                    onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })}
+                    className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                  >
+                    <option value="">All sprints</option>
+                    {data?.sprints.map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}
+                  </select>
+                  <select
+                    aria-label="Issue type"
+                    title={draft.issueType || 'All types'}
+                    value={draft.issueType}
+                    onChange={(event) => setDraft({ ...draft, issueType: event.target.value })}
+                    className="control min-w-0 max-w-[11rem] flex-[1_1_8rem]"
+                  >
+                    <option value="">All types</option>
+                    {issueTypeOptions.map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}
+                  </select>
                 </div>
-                <select aria-label="Project" value={draft.projectKey} onChange={(event) => setDraft({ ...draft, projectKey: event.target.value })} className="control">
-                  <option value="">All projects</option>
-                  {projectOptions.map((project) => <option key={project.id} value={project.key}>{project.name}</option>)}
-                </select>
-                <select aria-label="Sprint" value={draft.sprintId} onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })} className="control">
-                  <option value="">All sprints</option>
-                  {data?.sprints.map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}
-                </select>
-                <select aria-label="Issue type" value={draft.issueType} onChange={(event) => setDraft({ ...draft, issueType: event.target.value })} className="control">
-                  <option value="">All types</option>
-                  {issueTypeOptions.map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}
-                </select>
-                <label className="flex items-center gap-1.5">
-                  <span className="sr-only">Created from</span>
+                <div className="flex shrink-0 flex-wrap items-center gap-2 lg:flex-nowrap">
                   <input
                     aria-label="Created from"
                     type="date"
                     value={draft.startDate}
                     max={draft.endDate || undefined}
                     onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
-                    className="control min-w-[10.5rem]"
+                    className="control w-[10.5rem] shrink-0"
                   />
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <span className="sr-only">Created to</span>
                   <input
                     aria-label="Created to"
                     type="date"
                     value={draft.endDate}
                     min={draft.startDate || undefined}
                     onChange={(event) => setDraft({ ...draft, endDate: event.target.value })}
-                    className="control min-w-[10.5rem]"
+                    className="control w-[10.5rem] shrink-0"
                   />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => commitFilters(draft)}
-                  disabled={!dirty || invalidRange}
-                  className="rounded-xl bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400"
-                >
-                  {loading && data ? 'Applying…' : 'Apply'}
-                </button>
-                <button type="button" onClick={() => commitFilters(EMPTY_FILTERS)} className="control font-medium text-slate-600 dark:text-slate-300">Reset</button>
-                {invalidRange ? <p className="w-full text-xs text-amber-700 dark:text-amber-300">Created from must be on or before Created to.</p> : null}
+                  <button
+                    type="button"
+                    onClick={() => commitFilters(draft)}
+                    disabled={!dirty || invalidRange}
+                    className="shrink-0 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400"
+                  >
+                    {loading && data ? 'Applying…' : 'Apply'}
+                  </button>
+                  <button type="button" onClick={() => commitFilters(EMPTY_FILTERS)} className="control shrink-0 font-medium text-slate-600 dark:text-slate-300">Reset</button>
+                </div>
+                {invalidRange ? <p className="basis-full text-xs text-amber-700 dark:text-amber-300">Created from must be on or before Created to.</p> : null}
               </div>
             </div>
           </GlassCard>

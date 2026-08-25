@@ -116,6 +116,12 @@ body {
     color-scheme: inherit;
   }
 
+  select.control {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
   .numeric {
     font-variant-numeric: tabular-nums slashed-zero;
     font-feature-settings: 'tnum' 1, 'zero' 1;

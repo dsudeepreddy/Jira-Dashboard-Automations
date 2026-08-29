@@ -28,6 +28,11 @@ const querySchema = z.object({
   projectKey: z.string().optional(),
   sprintId: z.coerce.number().int().positive().optional(),
   issueType: z.string().optional(),
+  label: z.string().optional(),
+  epicKey: z.string().optional(),
+  licenseBu: z.string().optional(),
+  auditType: z.string().optional(),
+  application: z.string().optional(),
   startDate: z.preprocess((value) => (value === '' ? undefined : value), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
   endDate: z.preprocess((value) => (value === '' ? undefined : value), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
   page: z.coerce.number().int().positive().default(1),
@@ -39,37 +44,37 @@ export async function getIssuesHandler(req: Request, res: Response, next: NextFu
   try {
     const parsed = querySchema.parse(req.query);
     const sort = parsed.sort;
+    let issues: Array<{
+      id: string;
+      key: string;
+      summary: string;
+      status?: string;
+      created: string;
+      updated: string;
+      resolved?: string | null;
+      issueType?: string;
+      projectKey?: string;
+      assignee?: string | null;
+      storyPoints?: number | null;
+      flagged?: boolean;
+    }>;
+    let total: number;
+
     if (isDatabaseEnabled()) {
       const result = await getStoredIssuesPage(parsed, parsed.page, parsed.pageSize, ISSUE_SORTS[sort].sql);
-      return res.json({
-        issues: result.issues.map((issue) => ({
-          id: issue.id,
-          key: issue.key,
-          summary: issue.summary,
-          status: issue.status,
-          created: issue.created,
-          updated: issue.updated,
-          resolved: issue.resolved,
-          issuetype: issue.issueType ? { name: issue.issueType } : undefined,
-          project: issue.projectKey ? { key: issue.projectKey } : undefined,
-          assignee: issue.assignee,
-          storyPoints: issue.storyPoints,
-          flagged: issue.flagged,
-        })),
-        page: parsed.page,
-        pageSize: parsed.pageSize,
-        total: result.total,
-        sort,
-        requestId: res.locals.requestId,
-      });
+      issues = result.issues;
+      total = result.total;
+    } else {
+      const searched = await jiraClient.searchIssues({ ...parsed, orderBy: ISSUE_SORTS[sort].jql });
+      const sorted = [...searched.issues].sort((left, right) => compareIssues(left, right, sort));
+      const start = (parsed.page - 1) * parsed.pageSize;
+      issues = sorted.slice(start, start + parsed.pageSize);
+      total = searched.issues.length;
     }
 
-    const { issues } = await jiraClient.searchIssues({ ...parsed, orderBy: ISSUE_SORTS[sort].jql });
-    const sorted = [...issues].sort((left, right) => compareIssues(left, right, sort));
-    const start = (parsed.page - 1) * parsed.pageSize;
-    const pageIssues = sorted.slice(start, start + parsed.pageSize);
+    const comments = await jiraClient.getLatestHumanComments(issues.map((issue) => issue.key)).catch(() => new Map());
     return res.json({
-      issues: pageIssues.map((issue) => ({
+      issues: issues.map((issue) => ({
         id: issue.id,
         key: issue.key,
         summary: issue.summary,
@@ -82,12 +87,13 @@ export async function getIssuesHandler(req: Request, res: Response, next: NextFu
         assignee: issue.assignee,
         storyPoints: issue.storyPoints,
         flagged: issue.flagged,
+        latestComment: comments.get(issue.key) || null,
       })),
-        page: parsed.page,
-        pageSize: parsed.pageSize,
-        total: issues.length,
-        sort,
-        requestId: res.locals.requestId,
+      page: parsed.page,
+      pageSize: parsed.pageSize,
+      total,
+      sort,
+      requestId: res.locals.requestId,
     });
   } catch (error) {
     next(error);

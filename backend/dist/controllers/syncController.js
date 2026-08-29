@@ -33,8 +33,11 @@ async function runJiraSync(full = false) {
     const sprints = [...new Map([...agileSprints, ...issueSprints].map((sprint) => [sprint.id, sprint])).values()];
     await (0, jiraRepository_1.upsertJiraSnapshot)({ projects, issues, sprints, issueTypes, statuses });
     await redisClient_1.redisCache.del('jira:projects');
+    await redisClient_1.redisCache.del('jira:projects:all');
     await redisClient_1.redisCache.del('jira:sprints');
     await redisClient_1.redisCache.del('jira:issueTypes');
+    await redisClient_1.redisCache.del('jira:issueTypes:all');
+    await redisClient_1.redisCache.del('jira:issueTypes:fromProjects');
     await redisClient_1.redisCache.del('jira:statuses');
     return { projects: projects.length, issues: issues.length, sprints: sprints.length, incremental: Boolean(updatedSince) };
 }

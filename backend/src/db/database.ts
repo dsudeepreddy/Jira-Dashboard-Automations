@@ -89,6 +89,13 @@ export async function initializeDatabase() {
   await ensureColumn(database, 'jira_issues', 'flagged', 'TINYINT(1) NOT NULL DEFAULT 0');
   await ensureColumn(database, 'jira_issues', 'in_progress_at', 'DATETIME(3) NULL');
   await ensureColumn(database, 'jira_issues', 'last_status_changed_at', 'DATETIME(3) NULL');
+  await ensureColumn(database, 'jira_issues', 'labels_json', 'JSON NULL');
+  await ensureColumn(database, 'jira_issues', 'components_json', 'JSON NULL');
+  await ensureColumn(database, 'jira_issues', 'license_bu_json', 'JSON NULL');
+  await ensureColumn(database, 'jira_issues', 'audit_type_json', 'JSON NULL');
+  await ensureColumn(database, 'jira_issues', 'application_json', 'JSON NULL');
+  await ensureColumn(database, 'jira_issues', 'epic_key', 'VARCHAR(64) NULL');
+  await ensureColumn(database, 'jira_issues', 'epic_name', 'VARCHAR(255) NULL');
   await ensureColumn(database, 'jira_sync_state', 'last_issue_updated_at', 'DATETIME(3) NULL');
 }
 

@@ -25,6 +25,8 @@ test('backend metrics returns a Jira-backed dashboard contract without an issue 
   assert.ok(Array.isArray(payload.metrics.statusBreakdown));
   assert.ok(Array.isArray(payload.metrics.wipAging));
   assert.ok(payload.metrics.forecast);
+  assert.ok(payload.metrics.fieldMetrics);
+  assert.ok(Array.isArray(payload.metrics.fieldMetrics.labels));
   assert.ok(payload.metrics.velocityUnit === 'points' || payload.metrics.velocityUnit === 'issues');
 });
 

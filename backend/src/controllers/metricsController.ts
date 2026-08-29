@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { jiraClient } from '../services/jiraClient';
 import {
+  getStoredEpics,
   getStoredIssueTypes,
   getStoredProjects,
   getStoredSnapshot,
@@ -19,12 +20,23 @@ const filtersSchema = z.object({
   projectKey: z.string().optional(),
   sprintId: z.coerce.number().int().positive().optional(),
   issueType: z.string().optional(),
+  label: z.string().optional(),
+  epicKey: z.string().optional(),
+  licenseBu: z.string().optional(),
+  auditType: z.string().optional(),
+  application: z.string().optional(),
   startDate: z.preprocess((value) => (value === '' ? undefined : value), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
   endDate: z.preprocess((value) => (value === '' ? undefined : value), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
 });
 
 function statusLookupFrom(statuses: Array<{ name: string; statusCategory?: { key?: string } }>) {
   return new Map(statuses.map((status) => [status.name.toLowerCase(), status.statusCategory?.key || '']));
+}
+
+function catalogNames(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => (value || '').trim()).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right))
+    .map((name) => ({ id: name, name }));
 }
 
 function asIso(value: unknown) {
@@ -37,14 +49,22 @@ export async function getMetricsHandler(req: Request, res: Response, next: NextF
   try {
     const parsed = filtersSchema.parse(req.query);
     const dbEnabled = isDatabaseEnabled();
+    const {
+      label: _label,
+      licenseBu: _licenseBu,
+      auditType: _auditType,
+      application: _application,
+      ...scopeForCatalog
+    } = parsed;
 
-    const [projects, agileSprints, issueTypes, statuses, searchResult, syncState] = dbEnabled
+    const [projects, agileSprints, issueTypes, statuses, searchResult, storedEpics, syncState] = dbEnabled
       ? await Promise.all([
           getStoredProjects(),
           getStoredSprints(),
           getStoredIssueTypes(),
           getStoredStatuses(),
-          getStoredSnapshot(parsed).then((issues) => ({ issues, sprints: [] as AnalyticsSprint[] })),
+          getStoredSnapshot(scopeForCatalog).then((issues) => ({ issues, sprints: [] as AnalyticsSprint[] })),
+          getStoredEpics(),
           getSyncState(),
         ])
       : await Promise.all([
@@ -52,7 +72,8 @@ export async function getMetricsHandler(req: Request, res: Response, next: NextF
           jiraClient.getSprints().catch(() => []),
           jiraClient.getIssueTypes(),
           jiraClient.getIssueStatuses(),
-          jiraClient.searchIssues(parsed),
+          jiraClient.searchIssues(scopeForCatalog),
+          jiraClient.getEpics(parsed.projectKey).catch(() => []),
           Promise.resolve(null),
         ]);
 
@@ -75,17 +96,30 @@ export async function getMetricsHandler(req: Request, res: Response, next: NextF
     const lastSyncedAt = asIso(syncState?.last_synced_at) || (dbEnabled ? null : fetchedAt);
     const stale = dbEnabled && lastSuccessAt ? Date.now() - new Date(lastSuccessAt).getTime() > env.STALE_AFTER_MS : false;
     const metrics = aggregateDashboardMetrics(issues, sprints, parsed, statusLookupFrom(statuses));
+    const labels = catalogNames(issues.flatMap((issue) => issue.labels || []));
+    const licenseBus = catalogNames(issues.flatMap((issue) => issue.licenseBu || []));
+    const auditTypes = catalogNames(issues.flatMap((issue) => issue.auditType || []));
+    const applications = catalogNames(issues.flatMap((issue) => issue.application || []));
+    const epics = [...new Map([
+      ...storedEpics.map((epic) => [epic.key, epic] as const),
+      ...issues.filter((issue) => issue.epicKey).map((issue) => [issue.epicKey as string, { key: issue.epicKey as string, name: issue.epicName || issue.epicKey || '' }] as const),
+    ]).values()].sort((left, right) => left.name.localeCompare(right.name));
 
     return res.json({
       projects,
       sprints,
       issueTypes,
+      labels,
+      epics,
+      licenseBus,
+      auditTypes,
+      applications,
       statuses,
       metrics,
       filters: parsed,
       meta: {
         source: 'jira',
-        issueCount: issues.length,
+        issueCount: metrics.totalIssues,
         requestId: res.locals.requestId,
         persistence: dbEnabled ? 'percona' : 'jira-direct',
         lastSuccessAt,

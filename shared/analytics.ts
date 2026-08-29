@@ -1,15 +1,18 @@
-import type { DashboardFilters, DashboardMetrics } from './dashboardContract';
+import type { DashboardFilters, DashboardMetrics, FieldMetrics, FieldSlice } from './dashboardContract';
+import { UNTAGGED_LABEL } from './dashboardContract';
 
 export const STATUS_COLORS: Record<string, string> = {
   Open: '#60a5fa',
   'In Progress': '#fbbf24',
   'In Review': '#a78bfa',
   Completed: '#34d399',
-  Closed: '#22c55e',
+  Closed: '#16a34a',
   Blocked: '#f87171',
   'To Do': '#94a3b8',
-  Done: '#34d399',
+  Done: '#10b981',
   Reopened: '#fb7185',
+  Approve: '#ec4899',
+  Approved: '#db2777',
 };
 
 export type StatusCategory = 'new' | 'indeterminate' | 'done' | 'unknown';
@@ -37,6 +40,14 @@ export interface AnalyticsIssue {
   assignee?: string | null;
   storyPoints?: number | null;
   flagged?: boolean;
+  priority?: string | null;
+  labels?: string[];
+  components?: string[];
+  licenseBu?: string[];
+  auditType?: string[];
+  application?: string[];
+  epicKey?: string | null;
+  epicName?: string | null;
   inProgressAt?: string | null;
   lastStatusChangedAt?: string | null;
   sprintIds?: number[];
@@ -55,6 +66,7 @@ export interface ChangelogHistory {
 
 const DONE_NAMES = new Set(['done', 'completed', 'closed', 'resolved', 'complete']);
 const PROGRESS_NAMES = new Set(['in progress', 'indeterminate', 'in review', 'in development', 'doing']);
+const SLICE_COLORS = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#fb7185', '#c084fc', '#2dd4bf', '#f97316', '#818cf8', '#94a3b8'];
 
 export function isoWeekKey(value: Date): string {
   const utc = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
@@ -154,6 +166,28 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function emptyFieldMetrics(): FieldMetrics {
+  return {
+    uniqueLabels: 0,
+    labeledIssues: 0,
+    unlabeledIssues: 0,
+    uniqueComponents: 0,
+    uniqueLicenseBus: 0,
+    uniqueAuditTypes: 0,
+    uniqueApplications: 0,
+    uniqueEpics: 0,
+    labels: [],
+    components: [],
+    priorities: [],
+    issueTypes: [],
+    projects: [],
+    licenseBus: [],
+    auditTypes: [],
+    applications: [],
+    epics: [],
+  };
+}
+
 function emptyMetrics(): DashboardMetrics {
   return {
     totalIssues: 0,
@@ -178,7 +212,92 @@ function emptyMetrics(): DashboardMetrics {
     timeInStatus: [],
     forecast: { remainingIssues: 0, avgWeeklyThroughput: 0, estimatedWeeks: null, estimatedDate: null },
     velocityBasis: 'week',
+    fieldMetrics: emptyFieldMetrics(),
   };
+}
+
+function cleanKeys(values?: Array<string | null | undefined>): string[] {
+  return [...new Set((values || []).map((value) => (value || '').trim()).filter(Boolean))];
+}
+
+function fieldSlices(
+  issues: AnalyticsIssue[],
+  keysOf: (issue: AnalyticsIssue) => string[],
+  statusLookup?: Map<string, string>,
+  options: { includeEmpty?: boolean; emptyName?: string; limit?: number } = {},
+): FieldSlice[] {
+  const { includeEmpty = false, emptyName = '(none)', limit = 12 } = options;
+  const map = new Map<string, { count: number; openCount: number; doneCount: number; points: number }>();
+
+  for (const issue of issues) {
+    const keys = cleanKeys(keysOf(issue));
+    const names = keys.length ? keys : (includeEmpty ? [emptyName] : []);
+    if (!names.length) continue;
+    const done = isDoneIssue(issue, statusLookup);
+    for (const name of names) {
+      const current = map.get(name) || { count: 0, openCount: 0, doneCount: 0, points: 0 };
+      current.count += 1;
+      if (done) current.doneCount += 1;
+      else current.openCount += 1;
+      current.points += issuePoints(issue);
+      map.set(name, current);
+    }
+  }
+
+  return [...map.entries()]
+    .map(([name, value]) => ({
+      name,
+      ...value,
+      completionRate: value.count ? Number(((value.doneCount / value.count) * 100).toFixed(1)) : 0,
+      color: SLICE_COLORS[0],
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, limit)
+    .map((row, index) => ({ ...row, color: SLICE_COLORS[index % SLICE_COLORS.length] }));
+}
+
+function aggregateFieldMetrics(issues: AnalyticsIssue[], statusLookup?: Map<string, string>): FieldMetrics {
+  const labeledIssues = issues.filter((issue) => cleanKeys(issue.labels).length > 0).length;
+  const licenseBus = fieldSlices(issues, (issue) => issue.licenseBu || [], statusLookup, { limit: 20 });
+  const auditTypes = fieldSlices(issues, (issue) => issue.auditType || [], statusLookup, { limit: 12 });
+  const applications = fieldSlices(issues, (issue) => issue.application || [], statusLookup, { limit: 20 });
+  const epics = fieldSlices(issues, (issue) => (issue.epicName || issue.epicKey ? [issue.epicName || issue.epicKey || ''] : []), statusLookup, { limit: 12 });
+  return {
+    uniqueLabels: new Set(issues.flatMap((issue) => cleanKeys(issue.labels))).size,
+    labeledIssues,
+    unlabeledIssues: issues.length - labeledIssues,
+    uniqueComponents: new Set(issues.flatMap((issue) => cleanKeys(issue.components))).size,
+    uniqueLicenseBus: new Set(issues.flatMap((issue) => cleanKeys(issue.licenseBu))).size,
+    uniqueAuditTypes: new Set(issues.flatMap((issue) => cleanKeys(issue.auditType))).size,
+    uniqueApplications: new Set(issues.flatMap((issue) => cleanKeys(issue.application))).size,
+    uniqueEpics: new Set(issues.map((issue) => issue.epicKey).filter(Boolean)).size,
+    labels: fieldSlices(issues, (issue) => issue.labels || [], statusLookup, { limit: 20 }),
+    components: fieldSlices(issues, (issue) => issue.components || [], statusLookup, { limit: 12 }),
+    priorities: fieldSlices(issues, (issue) => (issue.priority ? [issue.priority] : []), statusLookup, {
+      includeEmpty: true,
+      emptyName: '(none)',
+      limit: 10,
+    }),
+    issueTypes: fieldSlices(issues, (issue) => (issue.issueType ? [issue.issueType] : []), statusLookup, {
+      includeEmpty: true,
+      emptyName: '(none)',
+      limit: 12,
+    }),
+    projects: fieldSlices(issues, (issue) => (issue.projectKey ? [issue.projectKey] : []), statusLookup, {
+      includeEmpty: true,
+      emptyName: '(none)',
+      limit: 12,
+    }),
+    licenseBus,
+    auditTypes,
+    applications,
+    epics,
+  };
+}
+
+function hasSelected(values: Array<string | null | undefined> | undefined, wanted: string) {
+  const needle = wanted.trim().toLowerCase();
+  return cleanKeys(values).some((value) => value.toLowerCase() === needle);
 }
 
 function issuePoints(issue: AnalyticsIssue): number {
@@ -189,6 +308,16 @@ function matchesFilters(issue: AnalyticsIssue, filters: DashboardFilters): boole
   if (filters.projectKey && issue.projectKey && issue.projectKey !== filters.projectKey) return false;
   if (filters.issueType && issue.issueType !== filters.issueType) return false;
   if (filters.sprintId && !(issue.sprintIds || []).includes(filters.sprintId)) return false;
+  if (filters.label === UNTAGGED_LABEL) {
+    if (cleanKeys(issue.labels).length) return false;
+  } else if (filters.label) {
+    const wanted = filters.label.trim().toLowerCase();
+    if (!cleanKeys(issue.labels).some((label) => label.toLowerCase() === wanted)) return false;
+  }
+  if (filters.epicKey && issue.epicKey !== filters.epicKey) return false;
+  if (filters.licenseBu && !hasSelected(issue.licenseBu, filters.licenseBu)) return false;
+  if (filters.auditType && !hasSelected(issue.auditType, filters.auditType)) return false;
+  if (filters.application && !hasSelected(issue.application, filters.application)) return false;
   if (!isInCreatedDateRange(issue.created, filters.startDate, filters.endDate)) return false;
   return true;
 }
@@ -263,11 +392,29 @@ export function aggregateDashboardMetrics(
 
   const statusMap = new Map<string, number>();
   scoped.forEach((issue) => statusMap.set(issue.status, (statusMap.get(issue.status) || 0) + 1));
-  const statusBreakdown = [...statusMap.entries()].map(([name, value]) => ({
-    name,
-    value,
-    color: STATUS_COLORS[name] || '#64748b',
-  }));
+  const statusBreakdown = [...statusMap.entries()].map(([name, value]) => {
+    const normalized = name.toLowerCase().trim();
+    let color = '#64748b';
+
+    const matchedKey = Object.keys(STATUS_COLORS).find((k) => k.toLowerCase() === normalized);
+    if (matchedKey) {
+      color = STATUS_COLORS[matchedKey];
+    } else if (normalized.includes('approve') || normalized.includes('approval')) {
+      color = STATUS_COLORS['Approve'] || '#ec4899';
+    } else if (normalized.includes('todo') || normalized === 'to-do') {
+      color = STATUS_COLORS['To Do'] || '#94a3b8';
+    } else if (normalized.includes('progress')) {
+      color = STATUS_COLORS['In Progress'] || '#fbbf24';
+    } else if (normalized === 'done') {
+      color = STATUS_COLORS['Done'] || '#10b981';
+    }
+
+    return {
+      name,
+      value,
+      color,
+    };
+  });
 
   const completedSprints = sprints
     .filter((sprint) => {
@@ -380,5 +527,6 @@ export function aggregateDashboardMetrics(
     assigneeLoad,
     timeInStatus,
     forecast: { remainingIssues, avgWeeklyThroughput, estimatedWeeks, estimatedDate },
+    fieldMetrics: aggregateFieldMetrics(scoped, statusLookup),
   };
 }

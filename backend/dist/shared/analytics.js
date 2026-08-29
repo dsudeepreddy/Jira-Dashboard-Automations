@@ -3,25 +3,32 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.STATUS_COLORS = void 0;
 exports.isoWeekKey = isoWeekKey;
 exports.toSafeDate = toSafeDate;
+exports.shiftIsoDate = shiftIsoDate;
+exports.isInCreatedDateRange = isInCreatedDateRange;
+exports.createdDateJql = createdDateJql;
 exports.daysBetween = daysBetween;
 exports.ageBucket = ageBucket;
 exports.categoryForStatus = categoryForStatus;
 exports.isDoneIssue = isDoneIssue;
 exports.deriveFlowTimestamps = deriveFlowTimestamps;
 exports.aggregateDashboardMetrics = aggregateDashboardMetrics;
+const dashboardContract_1 = require("./dashboardContract");
 exports.STATUS_COLORS = {
     Open: '#60a5fa',
     'In Progress': '#fbbf24',
     'In Review': '#a78bfa',
     Completed: '#34d399',
-    Closed: '#22c55e',
+    Closed: '#16a34a',
     Blocked: '#f87171',
     'To Do': '#94a3b8',
-    Done: '#34d399',
+    Done: '#10b981',
     Reopened: '#fb7185',
+    Approve: '#ec4899',
+    Approved: '#db2777',
 };
 const DONE_NAMES = new Set(['done', 'completed', 'closed', 'resolved', 'complete']);
 const PROGRESS_NAMES = new Set(['in progress', 'indeterminate', 'in review', 'in development', 'doing']);
+const SLICE_COLORS = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#fb7185', '#c084fc', '#2dd4bf', '#f97316', '#818cf8', '#94a3b8'];
 function isoWeekKey(value) {
     const utc = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
     const day = utc.getUTCDay() || 7;
@@ -35,6 +42,34 @@ function toSafeDate(value) {
         return null;
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
+}
+/** Shift a YYYY-MM-DD calendar date by a number of days. */
+function shiftIsoDate(isoDate, days) {
+    const [year, month, day] = isoDate.split('-').map(Number);
+    if (!year || !month || !day)
+        return isoDate;
+    return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+/** Inclusive YYYY-MM-DD comparison against the UTC calendar date of `created`. */
+function isInCreatedDateRange(created, startDate, endDate) {
+    const instant = toSafeDate(created);
+    if (!instant)
+        return !startDate && !endDate;
+    const day = instant.toISOString().slice(0, 10);
+    if (startDate && day < startDate)
+        return false;
+    if (endDate && day > endDate)
+        return false;
+    return true;
+}
+/** Jira treats a date-only literal as midnight, so the end bound is exclusive next day. */
+function createdDateJql(startDate, endDate) {
+    const parts = [];
+    if (startDate)
+        parts.push(`created >= "${startDate}"`);
+    if (endDate)
+        parts.push(`created < "${shiftIsoDate(endDate, 1)}"`);
+    return parts.length ? parts.join(' AND ') : null;
 }
 function daysBetween(start, end) {
     return Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
@@ -93,6 +128,27 @@ function average(values) {
         return 0;
     return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
+function emptyFieldMetrics() {
+    return {
+        uniqueLabels: 0,
+        labeledIssues: 0,
+        unlabeledIssues: 0,
+        uniqueComponents: 0,
+        uniqueLicenseBus: 0,
+        uniqueAuditTypes: 0,
+        uniqueApplications: 0,
+        uniqueEpics: 0,
+        labels: [],
+        components: [],
+        priorities: [],
+        issueTypes: [],
+        projects: [],
+        licenseBus: [],
+        auditTypes: [],
+        applications: [],
+        epics: [],
+    };
+}
 function emptyMetrics() {
     return {
         totalIssues: 0,
@@ -117,7 +173,84 @@ function emptyMetrics() {
         timeInStatus: [],
         forecast: { remainingIssues: 0, avgWeeklyThroughput: 0, estimatedWeeks: null, estimatedDate: null },
         velocityBasis: 'week',
+        fieldMetrics: emptyFieldMetrics(),
     };
+}
+function cleanKeys(values) {
+    return [...new Set((values || []).map((value) => (value || '').trim()).filter(Boolean))];
+}
+function fieldSlices(issues, keysOf, statusLookup, options = {}) {
+    const { includeEmpty = false, emptyName = '(none)', limit = 12 } = options;
+    const map = new Map();
+    for (const issue of issues) {
+        const keys = cleanKeys(keysOf(issue));
+        const names = keys.length ? keys : (includeEmpty ? [emptyName] : []);
+        if (!names.length)
+            continue;
+        const done = isDoneIssue(issue, statusLookup);
+        for (const name of names) {
+            const current = map.get(name) || { count: 0, openCount: 0, doneCount: 0, points: 0 };
+            current.count += 1;
+            if (done)
+                current.doneCount += 1;
+            else
+                current.openCount += 1;
+            current.points += issuePoints(issue);
+            map.set(name, current);
+        }
+    }
+    return [...map.entries()]
+        .map(([name, value]) => ({
+        name,
+        ...value,
+        completionRate: value.count ? Number(((value.doneCount / value.count) * 100).toFixed(1)) : 0,
+        color: SLICE_COLORS[0],
+    }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+        .slice(0, limit)
+        .map((row, index) => ({ ...row, color: SLICE_COLORS[index % SLICE_COLORS.length] }));
+}
+function aggregateFieldMetrics(issues, statusLookup) {
+    const labeledIssues = issues.filter((issue) => cleanKeys(issue.labels).length > 0).length;
+    const licenseBus = fieldSlices(issues, (issue) => issue.licenseBu || [], statusLookup, { limit: 20 });
+    const auditTypes = fieldSlices(issues, (issue) => issue.auditType || [], statusLookup, { limit: 12 });
+    const applications = fieldSlices(issues, (issue) => issue.application || [], statusLookup, { limit: 20 });
+    const epics = fieldSlices(issues, (issue) => (issue.epicName || issue.epicKey ? [issue.epicName || issue.epicKey || ''] : []), statusLookup, { limit: 12 });
+    return {
+        uniqueLabels: new Set(issues.flatMap((issue) => cleanKeys(issue.labels))).size,
+        labeledIssues,
+        unlabeledIssues: issues.length - labeledIssues,
+        uniqueComponents: new Set(issues.flatMap((issue) => cleanKeys(issue.components))).size,
+        uniqueLicenseBus: new Set(issues.flatMap((issue) => cleanKeys(issue.licenseBu))).size,
+        uniqueAuditTypes: new Set(issues.flatMap((issue) => cleanKeys(issue.auditType))).size,
+        uniqueApplications: new Set(issues.flatMap((issue) => cleanKeys(issue.application))).size,
+        uniqueEpics: new Set(issues.map((issue) => issue.epicKey).filter(Boolean)).size,
+        labels: fieldSlices(issues, (issue) => issue.labels || [], statusLookup, { limit: 20 }),
+        components: fieldSlices(issues, (issue) => issue.components || [], statusLookup, { limit: 12 }),
+        priorities: fieldSlices(issues, (issue) => (issue.priority ? [issue.priority] : []), statusLookup, {
+            includeEmpty: true,
+            emptyName: '(none)',
+            limit: 10,
+        }),
+        issueTypes: fieldSlices(issues, (issue) => (issue.issueType ? [issue.issueType] : []), statusLookup, {
+            includeEmpty: true,
+            emptyName: '(none)',
+            limit: 12,
+        }),
+        projects: fieldSlices(issues, (issue) => (issue.projectKey ? [issue.projectKey] : []), statusLookup, {
+            includeEmpty: true,
+            emptyName: '(none)',
+            limit: 12,
+        }),
+        licenseBus,
+        auditTypes,
+        applications,
+        epics,
+    };
+}
+function hasSelected(values, wanted) {
+    const needle = wanted.trim().toLowerCase();
+    return cleanKeys(values).some((value) => value.toLowerCase() === needle);
 }
 function issuePoints(issue) {
     return typeof issue.storyPoints === 'number' && Number.isFinite(issue.storyPoints) ? issue.storyPoints : 0;
@@ -129,13 +262,24 @@ function matchesFilters(issue, filters) {
         return false;
     if (filters.sprintId && !(issue.sprintIds || []).includes(filters.sprintId))
         return false;
-    // Sprint membership already defines the window; created-date filters would drop older sprint items.
-    if (filters.sprintId)
-        return true;
-    const created = toSafeDate(issue.created);
-    if (filters.startDate && created && created < new Date(`${filters.startDate}T00:00:00.000Z`))
+    if (filters.label === dashboardContract_1.UNTAGGED_LABEL) {
+        if (cleanKeys(issue.labels).length)
+            return false;
+    }
+    else if (filters.label) {
+        const wanted = filters.label.trim().toLowerCase();
+        if (!cleanKeys(issue.labels).some((label) => label.toLowerCase() === wanted))
+            return false;
+    }
+    if (filters.epicKey && issue.epicKey !== filters.epicKey)
         return false;
-    if (filters.endDate && created && created > new Date(`${filters.endDate}T23:59:59.999Z`))
+    if (filters.licenseBu && !hasSelected(issue.licenseBu, filters.licenseBu))
+        return false;
+    if (filters.auditType && !hasSelected(issue.auditType, filters.auditType))
+        return false;
+    if (filters.application && !hasSelected(issue.application, filters.application))
+        return false;
+    if (!isInCreatedDateRange(issue.created, filters.startDate, filters.endDate))
         return false;
     return true;
 }
@@ -197,11 +341,31 @@ function aggregateDashboardMetrics(issues, sprints = [], filters = {}, statusLoo
     const avgWeeklyThroughput = Number(average(recentThroughput).toFixed(1));
     const statusMap = new Map();
     scoped.forEach((issue) => statusMap.set(issue.status, (statusMap.get(issue.status) || 0) + 1));
-    const statusBreakdown = [...statusMap.entries()].map(([name, value]) => ({
-        name,
-        value,
-        color: exports.STATUS_COLORS[name] || '#64748b',
-    }));
+    const statusBreakdown = [...statusMap.entries()].map(([name, value]) => {
+        const normalized = name.toLowerCase().trim();
+        let color = '#64748b';
+        const matchedKey = Object.keys(exports.STATUS_COLORS).find((k) => k.toLowerCase() === normalized);
+        if (matchedKey) {
+            color = exports.STATUS_COLORS[matchedKey];
+        }
+        else if (normalized.includes('approve') || normalized.includes('approval')) {
+            color = exports.STATUS_COLORS['Approve'] || '#ec4899';
+        }
+        else if (normalized.includes('todo') || normalized === 'to-do') {
+            color = exports.STATUS_COLORS['To Do'] || '#94a3b8';
+        }
+        else if (normalized.includes('progress')) {
+            color = exports.STATUS_COLORS['In Progress'] || '#fbbf24';
+        }
+        else if (normalized === 'done') {
+            color = exports.STATUS_COLORS['Done'] || '#10b981';
+        }
+        return {
+            name,
+            value,
+            color,
+        };
+    });
     const completedSprints = sprints
         .filter((sprint) => {
         const state = sprint.state?.toLowerCase() || '';
@@ -306,5 +470,6 @@ function aggregateDashboardMetrics(issues, sprints = [], filters = {}, statusLoo
         assigneeLoad,
         timeInStatus,
         forecast: { remainingIssues, avgWeeklyThroughput, estimatedWeeks, estimatedDate },
+        fieldMetrics: aggregateFieldMetrics(scoped, statusLookup),
     };
 }

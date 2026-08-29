@@ -90,6 +90,105 @@ test('aggregateDashboardMetrics uses sprint points, cycle time, and in-progress 
   assert.equal(metrics.velocityBasis, 'sprint');
 });
 
+test('fieldMetrics rolls up labels, priority, and other fields', () => {
+  const metrics = aggregateDashboardMetrics(
+    [
+      {
+        id: '1',
+        key: 'APP-1',
+        summary: 'Tagged done',
+        status: 'Done',
+        statusCategory: 'done',
+        created: '2026-01-01T00:00:00.000Z',
+        updated: '2026-01-02T00:00:00.000Z',
+        resolved: '2026-01-02T00:00:00.000Z',
+        labels: ['payments', 'p1'],
+        components: ['Checkout'],
+        priority: 'High',
+        issueType: 'Story',
+        projectKey: 'APP',
+        storyPoints: 5,
+      },
+      {
+        id: '2',
+        key: 'APP-2',
+        summary: 'Tagged open',
+        status: 'To Do',
+        statusCategory: 'new',
+        created: '2026-01-03T00:00:00.000Z',
+        updated: '2026-01-03T00:00:00.000Z',
+        labels: ['payments'],
+        priority: 'Low',
+        issueType: 'Bug',
+        projectKey: 'APP',
+      },
+      {
+        id: '3',
+        key: 'APP-3',
+        summary: 'No tags',
+        status: 'To Do',
+        statusCategory: 'new',
+        created: '2026-01-04T00:00:00.000Z',
+        updated: '2026-01-04T00:00:00.000Z',
+        projectKey: 'APP',
+      },
+    ],
+    [],
+    {},
+    undefined,
+    new Date('2026-02-01T00:00:00.000Z'),
+  );
+
+  assert.equal(metrics.fieldMetrics.uniqueLabels, 2);
+  assert.equal(metrics.fieldMetrics.labeledIssues, 2);
+  assert.equal(metrics.fieldMetrics.unlabeledIssues, 1);
+  const payments = metrics.fieldMetrics.labels.find((row) => row.name === 'payments');
+  assert.equal(payments?.count, 2);
+  assert.equal(payments?.doneCount, 1);
+  assert.equal(payments?.openCount, 1);
+  assert.equal(payments?.points, 5);
+  assert.equal(metrics.fieldMetrics.priorities.find((row) => row.name === 'High')?.count, 1);
+  assert.equal(metrics.fieldMetrics.issueTypes.find((row) => row.name === 'Bug')?.count, 1);
+  assert.equal(metrics.fieldMetrics.components[0].name, 'Checkout');
+});
+
+test('label filter scopes metrics to matching tags, including untagged', () => {
+  const { UNTAGGED_LABEL } = require('./.tmp/dashboardContract.js');
+  const issues = [
+    { id: '1', key: 'APP-1', summary: 'A', status: 'To Do', created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z', labels: ['payments'] },
+    { id: '2', key: 'APP-2', summary: 'B', status: 'To Do', created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z', labels: ['checkout', 'payments'] },
+    { id: '3', key: 'APP-3', summary: 'C', status: 'To Do', created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z' },
+  ];
+  assert.equal(aggregateDashboardMetrics(issues, [], { label: 'payments' }).totalIssues, 2);
+  assert.equal(aggregateDashboardMetrics(issues, [], { label: 'checkout' }).totalIssues, 1);
+  assert.equal(aggregateDashboardMetrics(issues, [], { label: UNTAGGED_LABEL }).totalIssues, 1);
+});
+
+test('audit fields and FY epic filter the dashboard', () => {
+  const issues = [
+    {
+      id: '1', key: 'AUD-1', summary: 'A', status: 'To Do',
+      created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z',
+      licenseBu: ['Payments'], auditType: ['SOX'], application: ['Checkout'], epicKey: 'AUD-FY26', epicName: 'FY26 Audit',
+    },
+    {
+      id: '2', key: 'AUD-2', summary: 'B', status: 'To Do',
+      created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z',
+      licenseBu: ['Lending'], auditType: ['ISO'], application: ['Ledger'], epicKey: 'AUD-FY26', epicName: 'FY26 Audit',
+    },
+    {
+      id: '3', key: 'AUD-3', summary: 'C', status: 'To Do',
+      created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z',
+      licenseBu: ['Payments'], auditType: ['SOX'], application: ['Checkout'], epicKey: 'AUD-FY25', epicName: 'FY25 Audit',
+    },
+  ];
+  const fy26 = aggregateDashboardMetrics(issues, [], { epicKey: 'AUD-FY26' });
+  assert.equal(fy26.totalIssues, 2);
+  assert.equal(fy26.fieldMetrics.uniqueLicenseBus, 2);
+  assert.equal(aggregateDashboardMetrics(issues, [], { licenseBu: 'Payments' }).totalIssues, 2);
+  assert.equal(aggregateDashboardMetrics(issues, [], { auditType: 'SOX', application: 'Checkout', epicKey: 'AUD-FY26' }).totalIssues, 1);
+});
+
 test('velocity falls back to ISO weeks when sprint membership is missing', () => {
   const metrics = aggregateDashboardMetrics(
     [

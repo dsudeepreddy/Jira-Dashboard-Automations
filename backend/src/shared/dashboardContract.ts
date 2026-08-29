@@ -1,7 +1,16 @@
+import type { LatestHumanComment } from './comments';
+
+export const UNTAGGED_LABEL = '__untagged__';
+
 export interface DashboardFilters {
   projectKey?: string;
   sprintId?: number;
   issueType?: string;
+  label?: string;
+  epicKey?: string;
+  licenseBu?: string;
+  auditType?: string;
+  application?: string;
   startDate?: string;
   endDate?: string;
 }
@@ -27,6 +36,37 @@ export interface DashboardIssue {
   assignee?: string | null;
   storyPoints?: number | null;
   flagged?: boolean;
+  latestComment?: LatestHumanComment | null;
+}
+
+export interface FieldSlice {
+  name: string;
+  count: number;
+  openCount: number;
+  doneCount: number;
+  points: number;
+  completionRate: number;
+  color: string;
+}
+
+export interface FieldMetrics {
+  uniqueLabels: number;
+  labeledIssues: number;
+  unlabeledIssues: number;
+  uniqueComponents: number;
+  uniqueLicenseBus: number;
+  uniqueAuditTypes: number;
+  uniqueApplications: number;
+  uniqueEpics: number;
+  labels: FieldSlice[];
+  components: FieldSlice[];
+  priorities: FieldSlice[];
+  issueTypes: FieldSlice[];
+  projects: FieldSlice[];
+  licenseBus: FieldSlice[];
+  auditTypes: FieldSlice[];
+  applications: FieldSlice[];
+  epics: FieldSlice[];
 }
 
 export interface DashboardMetrics {
@@ -52,12 +92,18 @@ export interface DashboardMetrics {
     estimatedWeeks: number | null;
     estimatedDate: string | null;
   };
+  fieldMetrics: FieldMetrics;
 }
 
 export interface DashboardPayload {
   projects: Array<{ id: string; key: string; name: string; projectTypeKey?: string }>;
   sprints: Array<{ id: number; name: string; state: string; startDate?: string; endDate?: string; completeDate?: string }>;
   issueTypes: Array<{ id: string; name: string; description?: string }>;
+  labels: Array<{ id: string; name: string }>;
+  epics: Array<{ key: string; name: string }>;
+  licenseBus: Array<{ id: string; name: string }>;
+  auditTypes: Array<{ id: string; name: string }>;
+  applications: Array<{ id: string; name: string }>;
   statuses: Array<{ id: string; name: string; statusCategory?: { key: string; name: string } }>;
   metrics: DashboardMetrics;
   filters: DashboardFilters;

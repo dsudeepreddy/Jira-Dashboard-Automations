@@ -1,27 +1,37 @@
 'use client';
 
-import { AlertTriangle, BarChart3, ChevronLeft, ChevronRight, Filter, FolderKanban, Gauge, Activity, TimerReset } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Filter, FolderKanban, Gauge, Activity, TimerReset } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DashboardPayload, IssuePagePayload } from '@/shared/dashboardContract';
-import { atlassianIssueUrl } from '@/shared/dashboardContract';
+import { atlassianIssueUrl, UNTAGGED_LABEL } from '@/shared/dashboardContract';
 import { AmbientBackground } from './AmbientBackground';
 import { GlassCard } from './GlassCard';
 import { MetricCard } from './MetricCard';
 import { StatusDistributionChart } from './StatusDistributionChart';
 import { ThroughputTrendChart } from './ThroughputTrendChart';
 import { AssigneeLoadChart, VelocityChart, WipAgingChart } from './FlowCharts';
+import { InsightsView } from './InsightsView';
 import { ThemeToggle } from './ThemeToggle';
 
 type Filters = {
   projectKey: string;
   sprintId: string;
   issueType: string;
+  label: string;
+  epicKey: string;
+  licenseBu: string;
+  auditType: string;
+  application: string;
   startDate: string;
   endDate: string;
 };
 
-const EMPTY_FILTERS: Filters = { projectKey: '', sprintId: '', issueType: '', startDate: '', endDate: '' };
+const EMPTY_FILTERS: Filters = {
+  projectKey: '', sprintId: '', issueType: '', label: '',
+  epicKey: '', licenseBu: '', auditType: '', application: '',
+  startDate: '', endDate: '',
+};
 
 const ISSUE_SORT_OPTIONS = [
   { value: 'updated-desc', label: 'Latest updated' },
@@ -54,6 +64,11 @@ function filtersFromParams(params: URLSearchParams): Filters {
     projectKey: params.get('projectKey') || '',
     sprintId: params.get('sprintId') || '',
     issueType: params.get('issueType') || '',
+    label: params.get('label') || '',
+    epicKey: params.get('epicKey') || '',
+    licenseBu: params.get('licenseBu') || '',
+    auditType: params.get('auditType') || '',
+    application: params.get('application') || '',
     startDate: params.get('startDate') || '',
     endDate: params.get('endDate') || '',
   };
@@ -80,6 +95,8 @@ export function DashboardLayout() {
   const [issuePage, setIssuePage] = useState(1);
   const [issuePageSize, setIssuePageSize] = useState(25);
   const [issueSort, setIssueSort] = useState('updated-desc');
+  const [showMore, setShowMore] = useState(false);
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(filters);
   const urlQuery = searchParams.toString();
@@ -171,6 +188,15 @@ export function DashboardLayout() {
       return true;
     });
   }, [data?.issueTypes]);
+  const labelOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return (data?.labels || []).filter((label) => {
+      const name = label.name.trim().toLowerCase();
+      if (!name || seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    });
+  }, [data?.labels]);
 
   return (
     <main className="relative isolate min-h-screen px-4 py-5 text-slate-900 sm:px-6 lg:px-8 dark:text-white">
@@ -200,84 +226,154 @@ export function DashboardLayout() {
                   <ThemeToggle />
                 </div>
               </div>
-              <div className="flex flex-col gap-2 border-t border-slate-200/70 pt-3 dark:border-white/10 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                  <div className="flex shrink-0 items-center gap-2 pr-1 text-sm font-medium">
+              <div className="border-t border-slate-200/70 pt-3 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setIsFiltersExpanded((prev) => !prev)}
+                  className="flex w-full items-center justify-between text-sm font-medium text-slate-700 transition hover:text-cyan-600 dark:text-slate-200 dark:hover:text-cyan-400"
+                >
+                  <div className="flex items-center gap-2">
                     <Filter className="h-4 w-4 text-cyan-500" />
-                    Filters
+                    <span>Filters</span>
+                    {Object.values(filters).some(Boolean) && (
+                      <span className="ml-1.5 rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300">
+                        Active
+                      </span>
+                    )}
                   </div>
-                  <select
-                    aria-label="Project"
-                    title={projectOptions.find((project) => project.key === draft.projectKey)?.name || 'All projects'}
-                    value={draft.projectKey}
-                    onChange={(event) => setDraft({ ...draft, projectKey: event.target.value })}
-                    className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
-                  >
-                    <option value="">All projects</option>
-                    {projectOptions.map((project) => <option key={project.id} value={project.key}>{project.name}</option>)}
-                  </select>
-                  <select
-                    aria-label="Sprint"
-                    title={data?.sprints.find((sprint) => String(sprint.id) === draft.sprintId)?.name || 'All sprints'}
-                    value={draft.sprintId}
-                    onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })}
-                    className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
-                  >
-                    <option value="">All sprints</option>
-                    {data?.sprints.map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}
-                  </select>
-                  <select
-                    aria-label="Issue type"
-                    title={draft.issueType || 'All types'}
-                    value={draft.issueType}
-                    onChange={(event) => setDraft({ ...draft, issueType: event.target.value })}
-                    className="control min-w-0 max-w-[11rem] flex-[1_1_8rem]"
-                  >
-                    <option value="">All types</option>
-                    {issueTypeOptions.map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}
-                  </select>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2 lg:flex-nowrap">
-                  <input
-                    aria-label="Created from"
-                    type="date"
-                    value={draft.startDate}
-                    max={draft.endDate || undefined}
-                    onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
-                    className="control w-[10.5rem] shrink-0"
-                  />
-                  <input
-                    aria-label="Created to"
-                    type="date"
-                    value={draft.endDate}
-                    min={draft.startDate || undefined}
-                    onChange={(event) => setDraft({ ...draft, endDate: event.target.value })}
-                    className="control w-[10.5rem] shrink-0"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => commitFilters(draft)}
-                    disabled={!dirty || invalidRange}
-                    className="shrink-0 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400"
-                  >
-                    {loading && data ? 'Applying…' : 'Apply'}
-                  </button>
-                  <button type="button" onClick={() => commitFilters(EMPTY_FILTERS)} className="control shrink-0 font-medium text-slate-600 dark:text-slate-300">Reset</button>
-                </div>
-                {invalidRange ? <p className="basis-full text-xs text-amber-700 dark:text-amber-300">Created from must be on or before Created to.</p> : null}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                    <span>{isFiltersExpanded ? 'Collapse' : 'Expand'}</span>
+                    {isFiltersExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </div>
+                </button>
               </div>
+              {isFiltersExpanded && (
+                <div className="flex flex-col gap-2 border-t border-slate-200/70 pt-3 dark:border-white/10 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    <select
+                      aria-label="Project"
+                      title={projectOptions.find((project) => project.key === draft.projectKey)?.name || 'All projects'}
+                      value={draft.projectKey}
+                      onChange={(event) => setDraft({ ...draft, projectKey: event.target.value })}
+                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                    >
+                      <option value="">All projects</option>
+                      {projectOptions.map((project) => <option key={project.id} value={project.key}>{project.name}</option>)}
+                    </select>
+                    <select
+                      aria-label="Financial year epic"
+                      title={data?.epics?.find((epic) => epic.key === draft.epicKey)?.name || 'All FY epics'}
+                      value={draft.epicKey}
+                      onChange={(event) => setDraft({ ...draft, epicKey: event.target.value })}
+                      className="control min-w-0 max-w-[16rem] flex-[1_1_12rem]"
+                    >
+                      <option value="">All FY epics</option>
+                      {(data?.epics || []).map((epic) => <option key={epic.key} value={epic.key}>{epic.name}</option>)}
+                    </select>
+                    <select
+                      aria-label="License / BU"
+                      title={draft.licenseBu || 'All License/BU'}
+                      value={draft.licenseBu}
+                      onChange={(event) => setDraft({ ...draft, licenseBu: event.target.value })}
+                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                    >
+                      <option value="">All License/BU</option>
+                      {(data?.licenseBus || []).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+                    </select>
+                    <select
+                      aria-label="Audit type"
+                      title={draft.auditType || 'All audit types'}
+                      value={draft.auditType}
+                      onChange={(event) => setDraft({ ...draft, auditType: event.target.value })}
+                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                    >
+                      <option value="">All audit types</option>
+                      {(data?.auditTypes || []).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+                    </select>
+                    <select
+                      aria-label="Application"
+                      title={draft.application || 'All applications'}
+                      value={draft.application}
+                      onChange={(event) => setDraft({ ...draft, application: event.target.value })}
+                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                    >
+                      <option value="">All applications</option>
+                      {(data?.applications || []).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+                    </select>
+                    <select
+                      aria-label="Sprint"
+                      title={data?.sprints?.find((sprint) => String(sprint.id) === draft.sprintId)?.name || 'All sprints'}
+                      value={draft.sprintId}
+                      onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })}
+                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                    >
+                      <option value="">All sprints</option>
+                      {(data?.sprints || []).map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}
+                    </select>
+                    <select
+                      aria-label="Issue type"
+                      title={draft.issueType || 'All types'}
+                      value={draft.issueType}
+                      onChange={(event) => setDraft({ ...draft, issueType: event.target.value })}
+                      className="control min-w-0 max-w-[11rem] flex-[1_1_8rem]"
+                    >
+                      <option value="">All types</option>
+                      {issueTypeOptions.map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}
+                    </select>
+                    <select
+                      aria-label="Tag"
+                      title={draft.label === UNTAGGED_LABEL ? 'Untagged' : draft.label || 'All tags'}
+                      value={draft.label}
+                      onChange={(event) => setDraft({ ...draft, label: event.target.value })}
+                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                    >
+                      <option value="">All tags</option>
+                      <option value={UNTAGGED_LABEL}>Untagged</option>
+                      {labelOptions.map((label) => <option key={label.id} value={label.name}>{label.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 lg:flex-nowrap">
+                    <input
+                      aria-label="Created from"
+                      type="date"
+                      value={draft.startDate}
+                      max={draft.endDate || undefined}
+                      onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
+                      className="control w-[10.5rem] shrink-0"
+                    />
+                    <input
+                      aria-label="Created to"
+                      type="date"
+                      value={draft.endDate}
+                      min={draft.startDate || undefined}
+                      onChange={(event) => setDraft({ ...draft, endDate: event.target.value })}
+                      className="control w-[10.5rem] shrink-0"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => commitFilters(draft)}
+                      disabled={!dirty || invalidRange}
+                      className="shrink-0 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400"
+                    >
+                      {loading && data ? 'Applying…' : 'Apply'}
+                    </button>
+                    <button type="button" onClick={() => commitFilters(EMPTY_FILTERS)} className="control shrink-0 font-medium text-slate-600 dark:text-slate-300">Reset</button>
+                  </div>
+                  {invalidRange ? <p className="basis-full text-xs text-amber-700 dark:text-amber-300">Created from must be on or before Created to.</p> : null}
+                </div>
+              )}
             </div>
           </GlassCard>
         </header>
 
         <section className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr] lg:items-end">
           <div>
-            <p className="eyebrow mb-3">Delivery operations</p>
+            <p className="eyebrow mb-3">SRE audit</p>
             <h1 className="text-4xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-5xl">
-              Operations, <span className="text-cyan-600 dark:text-cyan-300">in focus.</span>
+              Audit work, <span className="text-cyan-600 dark:text-cyan-300">by FY.</span>
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-              Cycle time, sprint velocity, and remaining throughput — computed on the server, presented as a studio-grade ops surface.
+              Filter tickets by financial-year epic, License/BU, audit type, and application. Open View more for those breakdowns plus flow metrics.
             </p>
           </div>
           <GlassCard spotlight={false} className="px-5 py-4">
@@ -285,7 +381,25 @@ export function DashboardLayout() {
             <p className="mt-2 text-lg font-semibold">
               {filters.projectKey || 'All projects'}
               <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
-              {filters.sprintId ? data?.sprints.find((sprint) => String(sprint.id) === filters.sprintId)?.name || 'Sprint' : 'All sprints'}
+              {filters.epicKey ? data?.epics?.find((epic) => epic.key === filters.epicKey)?.name || filters.epicKey : 'All FY epics'}
+              {filters.licenseBu ? (
+                <>
+                  <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
+                  {filters.licenseBu}
+                </>
+              ) : null}
+              {filters.auditType ? (
+                <>
+                  <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
+                  {filters.auditType}
+                </>
+              ) : null}
+              {filters.application ? (
+                <>
+                  <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
+                  {filters.application}
+                </>
+              ) : null}
             </p>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{dateSummary}</p>
           </GlassCard>
@@ -314,6 +428,21 @@ export function DashboardLayout() {
           <>
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
+            </section>
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: 'License / BU', value: String(data.metrics.fieldMetrics?.uniqueLicenseBus ?? 0), unit: 'values in view', accent: 'from-cyan-400' },
+                { label: 'Audit types', value: String(data.metrics.fieldMetrics?.uniqueAuditTypes ?? 0), unit: 'in this filter', accent: 'from-indigo-400' },
+                { label: 'Applications', value: String(data.metrics.fieldMetrics?.uniqueApplications ?? 0), unit: 'in this filter', accent: 'from-violet-400' },
+                { label: 'FY epics', value: String(data.metrics.fieldMetrics?.uniqueEpics ?? 0), unit: 'linked epics', accent: 'from-fuchsia-400' },
+              ].map((item) => (
+                <GlassCard key={item.label} className="p-4">
+                  <div className={`mb-3 h-1 w-10 rounded-full bg-gradient-to-r ${item.accent} to-transparent`} />
+                  <p className="eyebrow">{item.label}</p>
+                  <p className="numeric mt-2 text-2xl font-medium tracking-tight">{item.value}</p>
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{item.unit}</p>
+                </GlassCard>
+              ))}
             </section>
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {[
@@ -358,6 +487,17 @@ export function DashboardLayout() {
                 </div>
               </GlassCard>
             </section>
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowMore((open) => !open)}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-cyan-400/60 hover:text-cyan-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:text-cyan-300"
+              >
+                {showMore ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {showMore ? 'View less' : 'View more'}
+              </button>
+            </div>
+            {showMore ? <InsightsView fieldMetrics={data.metrics.fieldMetrics} /> : null}
             <GlassCard className="p-5">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -385,14 +525,14 @@ export function DashboardLayout() {
                 </div>
               </div>
               <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-white/10">
-                <table className="w-full min-w-[760px] text-left text-sm">
+                <table className="w-full min-w-[980px] text-left text-sm">
                   <thead className="sticky top-0 bg-white/80 text-[10px] uppercase tracking-wider text-slate-500 backdrop-blur-md dark:bg-slate-950/70 dark:text-slate-400">
                     <tr>
                       <th className="px-4 py-3">Key</th>
                       <th className="px-4 py-3">Summary</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Assignee</th>
-                      <th className="px-4 py-3">Pts</th>
+                      <th className="px-4 py-3">Latest comment</th>
                       <th className="px-4 py-3">Updated</th>
                     </tr>
                   </thead>
@@ -427,7 +567,22 @@ export function DashboardLayout() {
                             <span className="text-slate-600 dark:text-slate-300">{issue.assignee || 'Unassigned'}</span>
                           </span>
                         </td>
-                        <td className="px-4 py-3 tabular-nums text-slate-600 dark:text-slate-300">{issue.storyPoints ?? '—'}</td>
+                        <td className="max-w-[320px] px-4 py-3">
+                          {issue.latestComment ? (
+                            <div>
+                              <p className="line-clamp-2 text-slate-700 dark:text-slate-200" title={issue.latestComment.text}>
+                                {issue.latestComment.text}
+                              </p>
+                              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                                {issue.latestComment.author}
+                                <span className="mx-1">·</span>
+                                {new Date(issue.latestComment.updated).toLocaleString()}
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-500">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">{new Date(issue.updated).toLocaleString()}</td>
                       </tr>
                       );

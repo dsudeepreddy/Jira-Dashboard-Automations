@@ -2,6 +2,7 @@ import type { RowDataPacket } from 'mysql2/promise';
 import { withDatabaseConnection } from './database';
 import type { JiraIssue, JiraIssueType, JiraProject, JiraSprint, JiraIssueStatus } from '../services/jiraClient';
 import { shiftIsoDate, type AnalyticsIssue, type AnalyticsSprint } from '../shared/analytics';
+import { UNTAGGED_LABEL } from '../shared/dashboardContract';
 
 function toMysqlDate(value?: string | null) {
   return value ? new Date(value).toISOString().slice(0, 23).replace('T', ' ') : null;
@@ -65,12 +66,16 @@ export async function upsertJiraSnapshot(input: {
         await connection.execute(
           `INSERT INTO jira_issues
              (id, issue_key, project_key, summary, status, status_category, issue_type, priority, assignee,
-              story_points, flagged, created_at, updated_at, resolved_at, in_progress_at, last_status_changed_at, raw_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              story_points, flagged, labels_json, components_json, license_bu_json, audit_type_json, application_json,
+              epic_key, epic_name, created_at, updated_at, resolved_at, in_progress_at, last_status_changed_at, raw_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE
              project_key = VALUES(project_key), summary = VALUES(summary), status = VALUES(status),
              status_category = VALUES(status_category), issue_type = VALUES(issue_type), priority = VALUES(priority),
              assignee = VALUES(assignee), story_points = VALUES(story_points), flagged = VALUES(flagged),
+             labels_json = VALUES(labels_json), components_json = VALUES(components_json),
+             license_bu_json = VALUES(license_bu_json), audit_type_json = VALUES(audit_type_json),
+             application_json = VALUES(application_json), epic_key = VALUES(epic_key), epic_name = VALUES(epic_name),
              created_at = VALUES(created_at), updated_at = VALUES(updated_at), resolved_at = VALUES(resolved_at),
              in_progress_at = VALUES(in_progress_at), last_status_changed_at = VALUES(last_status_changed_at),
              raw_json = VALUES(raw_json)`,
@@ -82,10 +87,17 @@ export async function upsertJiraSnapshot(input: {
             issue.status,
             issue.statusCategory || null,
             issue.issueType || null,
-            null,
+            issue.priority || null,
             issue.assignee || null,
             issue.storyPoints ?? null,
             issue.flagged ? 1 : 0,
+            JSON.stringify(issue.labels || []),
+            JSON.stringify(issue.components || []),
+            JSON.stringify(issue.licenseBu || []),
+            JSON.stringify(issue.auditType || []),
+            JSON.stringify(issue.application || []),
+            issue.epicKey || null,
+            issue.epicName || null,
             toMysqlDate(issue.created),
             toMysqlDate(issue.updated),
             toMysqlDate(issue.resolved),
@@ -130,7 +142,11 @@ export async function markSyncFailure(error: unknown) {
   ).then(() => undefined));
 }
 
-function issueWhere(filters: { projectKey?: string; issueType?: string; startDate?: string; endDate?: string; sprintId?: number }) {
+function issueWhere(filters: {
+  projectKey?: string; issueType?: string; label?: string; epicKey?: string;
+  licenseBu?: string; auditType?: string; application?: string;
+  startDate?: string; endDate?: string; sprintId?: number;
+}) {
   const clauses = ['1 = 1'];
   const values: Array<string | number> = [];
   if (filters.projectKey) { clauses.push('i.project_key = ?'); values.push(filters.projectKey); }
@@ -139,9 +155,39 @@ function issueWhere(filters: { projectKey?: string; issueType?: string; startDat
     clauses.push('EXISTS (SELECT 1 FROM jira_issue_sprints s WHERE s.issue_id = i.id AND s.sprint_id = ?)');
     values.push(filters.sprintId);
   }
+  if (filters.label === UNTAGGED_LABEL) {
+    clauses.push('(i.labels_json IS NULL OR JSON_LENGTH(i.labels_json) = 0)');
+  } else if (filters.label) {
+    clauses.push('JSON_CONTAINS(i.labels_json, JSON_QUOTE(?), \'$\')');
+    values.push(filters.label);
+  }
+  if (filters.epicKey) { clauses.push('i.epic_key = ?'); values.push(filters.epicKey); }
+  if (filters.licenseBu) {
+    clauses.push('JSON_CONTAINS(i.license_bu_json, JSON_QUOTE(?), \'$\')');
+    values.push(filters.licenseBu);
+  }
+  if (filters.auditType) {
+    clauses.push('JSON_CONTAINS(i.audit_type_json, JSON_QUOTE(?), \'$\')');
+    values.push(filters.auditType);
+  }
+  if (filters.application) {
+    clauses.push('JSON_CONTAINS(i.application_json, JSON_QUOTE(?), \'$\')');
+    values.push(filters.application);
+  }
   if (filters.startDate) { clauses.push('i.created_at >= ?'); values.push(`${filters.startDate} 00:00:00`); }
   if (filters.endDate) { clauses.push('i.created_at < ?'); values.push(`${shiftIsoDate(filters.endDate, 1)} 00:00:00`); }
   return { sql: clauses.join(' AND '), values };
+}
+
+function parseJsonStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
 }
 
 function mapIssueRow(row: RowDataPacket, sprintIds: number[] = []): AnalyticsIssue {
@@ -156,6 +202,14 @@ function mapIssueRow(row: RowDataPacket, sprintIds: number[] = []): AnalyticsIss
     assignee: row.assignee ? String(row.assignee) : null,
     storyPoints: row.story_points == null ? null : Number(row.story_points),
     flagged: Boolean(row.flagged),
+    priority: row.priority ? String(row.priority) : null,
+    labels: parseJsonStringList(row.labels_json),
+    components: parseJsonStringList(row.components_json),
+    licenseBu: parseJsonStringList(row.license_bu_json),
+    auditType: parseJsonStringList(row.audit_type_json),
+    application: parseJsonStringList(row.application_json),
+    epicKey: row.epic_key ? String(row.epic_key) : null,
+    epicName: row.epic_name ? String(row.epic_name) : null,
     created: new Date(row.created_at).toISOString(),
     updated: new Date(row.updated_at).toISOString(),
     resolved: row.resolved_at ? new Date(row.resolved_at).toISOString() : null,
@@ -169,8 +223,9 @@ export async function getStoredSnapshot(filters: { projectKey?: string; issueTyp
   return withDatabaseConnection(async (connection) => {
     const { sql, values } = issueWhere(filters);
     const [rows] = await connection.execute<RowDataPacket[]>(
-      `SELECT id, issue_key, project_key, summary, status, status_category, issue_type, assignee, story_points,
-              flagged, created_at, updated_at, resolved_at, in_progress_at, last_status_changed_at
+      `SELECT id, issue_key, project_key, summary, status, status_category, issue_type, priority, assignee, story_points,
+              flagged, labels_json, components_json, license_bu_json, audit_type_json, application_json, epic_key, epic_name,
+              created_at, updated_at, resolved_at, in_progress_at, last_status_changed_at
        FROM jira_issues i WHERE ${sql} ORDER BY i.updated_at DESC LIMIT 10000`,
       values,
     );
@@ -215,6 +270,17 @@ export async function getStoredIssuesPage(
       values,
     );
     return { total, issues: rows.map((row) => mapIssueRow(row)) };
+  });
+}
+
+export async function getStoredEpics(): Promise<Array<{ key: string; name: string }>> {
+  return withDatabaseConnection(async (connection) => {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT epic_key AS \`key\`, MAX(epic_name) AS name
+       FROM jira_issues WHERE epic_key IS NOT NULL AND epic_key <> ''
+       GROUP BY epic_key ORDER BY name`,
+    );
+    return rows.map((row) => ({ key: String(row.key), name: String(row.name || row.key) }));
   });
 }
 

@@ -5,10 +5,18 @@ import { ChartPanel, ChartTooltip } from './ChartShell';
 
 type StatusDatum = { name: string; value: number; color: string };
 
-export function StatusDistributionChart({ data }: { data: StatusDatum[] }) {
+export function StatusDistributionChart({
+  data,
+  eyebrow = 'Portfolio health',
+  title = 'Status mix',
+}: {
+  data: StatusDatum[];
+  eyebrow?: string;
+  title?: string;
+}) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   return (
-    <ChartPanel eyebrow="Portfolio health" title="Status mix" delay={0.18} action={<span className="status-chip">{total} issues</span>}>
+    <ChartPanel eyebrow={eyebrow} title={title} delay={0.18} action={<span className="status-chip">{total} issues</span>}>
       <div className="relative h-72">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>

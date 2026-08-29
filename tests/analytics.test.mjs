@@ -8,7 +8,28 @@ const {
   aggregateDashboardMetrics,
   categoryForStatus,
   deriveFlowTimestamps,
+  calculateValidationTime,
 } = require('./.tmp/analytics.js');
+
+test('calculateValidationTime correctly tracks duration in validation statuses', () => {
+  const created = '2026-01-01T00:00:00.000Z';
+  const resolved = '2026-01-10T00:00:00.000Z';
+
+  // Transition sequence:
+  // 2026-01-01 (created): To Do
+  // 2026-01-03: In Progress
+  // 2026-01-05: Under Validation (enters validation stage)
+  // 2026-01-08: Done (leaves validation stage)
+  // Total in validation: 3 days (01-05 to 01-08)
+  const histories = [
+    { created: '2026-01-03T00:00:00.000Z', items: [{ field: 'status', fromString: 'To Do', toString: 'In Progress' }] },
+    { created: '2026-01-05T00:00:00.000Z', items: [{ field: 'status', fromString: 'In Progress', toString: 'Under Validation' }] },
+    { created: '2026-01-08T00:00:00.000Z', items: [{ field: 'status', fromString: 'Under Validation', toString: 'Done' }] },
+  ];
+
+  const days = calculateValidationTime(created, resolved, 'Done', histories);
+  assert.equal(days, 3);
+});
 
 test('isoWeekKey uses ISO week-year, not calendar-month weeks', () => {
   assert.equal(isoWeekKey(new Date('2026-01-01T12:00:00.000Z')), '2026-W01');

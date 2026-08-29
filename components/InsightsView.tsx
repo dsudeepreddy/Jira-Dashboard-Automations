@@ -1,13 +1,18 @@
 'use client';
 
-import { Boxes, Flag, Hash, Layers } from 'lucide-react';
+import { Boxes, Hash, Layers } from 'lucide-react';
 import type { FieldMetrics } from '@/shared/dashboardContract';
-import { FieldBarChart } from './FieldCharts';
+import { FieldBarChart, ValidationTimeBarChart } from './FieldCharts';
 import { GlassCard } from './GlassCard';
 import { MetricCard } from './MetricCard';
-import { StatusDistributionChart } from './StatusDistributionChart';
 
-export function InsightsView({ fieldMetrics }: { fieldMetrics?: FieldMetrics }) {
+export function InsightsView({
+  fieldMetrics,
+  validationTimeByAuditType = [],
+}: {
+  fieldMetrics?: FieldMetrics;
+  validationTimeByAuditType?: Array<{ auditType: string; avgDays: number; count: number }>;
+}) {
   if (!fieldMetrics) return null;
 
   const coverage = fieldMetrics.labeledIssues + fieldMetrics.unlabeledIssues;
@@ -15,11 +20,10 @@ export function InsightsView({ fieldMetrics }: { fieldMetrics?: FieldMetrics }) 
 
   return (
     <>
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <MetricCard title="License / BU" value={fieldMetrics.uniqueLicenseBus ?? 0} icon={Layers} tone="cyan" />
         <MetricCard title="Audit types" value={fieldMetrics.uniqueAuditTypes ?? 0} icon={Hash} tone="mint" />
         <MetricCard title="Applications" value={fieldMetrics.uniqueApplications ?? 0} icon={Boxes} tone="violet" />
-        <MetricCard title="FY epics" value={fieldMetrics.uniqueEpics ?? 0} icon={Flag} tone="amber" />
       </section>
       <section className="grid gap-5 xl:grid-cols-2">
         <FieldBarChart
@@ -42,19 +46,9 @@ export function InsightsView({ fieldMetrics }: { fieldMetrics?: FieldMetrics }) 
           title="Work by application"
           emptyLabel="No Application values on issues in this filter."
         />
-        <FieldBarChart
-          data={fieldMetrics.epics || []}
-          eyebrow="Financial year"
-          title="Work by FY epic"
-          emptyLabel="No epic links on issues in this filter."
-        />
+        <ValidationTimeBarChart data={validationTimeByAuditType} />
       </section>
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="Unique tags" value={fieldMetrics.uniqueLabels} icon={Hash} tone="cyan" />
-        <MetricCard title="Tagged issues" value={fieldMetrics.labeledIssues} icon={Layers} tone="mint" />
-        <MetricCard title="Untagged issues" value={fieldMetrics.unlabeledIssues} icon={Flag} tone="amber" />
-        <MetricCard title="Components" value={fieldMetrics.uniqueComponents} icon={Boxes} tone="violet" />
-      </section>
+
       <GlassCard spotlight={false} className="px-5 py-4">
         <p className="eyebrow">Tag coverage</p>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
@@ -62,40 +56,14 @@ export function InsightsView({ fieldMetrics }: { fieldMetrics?: FieldMetrics }) 
           Counts by tag can exceed the issue total because an issue may carry several labels.
         </p>
       </GlassCard>
-      <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+
+      <section className="grid gap-5 xl:grid-cols-2">
         <FieldBarChart
           data={fieldMetrics.labels}
           eyebrow="Jira labels"
           title="Work by tag"
           hint="Top labels in the current filter."
           emptyLabel="No labels on issues in this filter."
-        />
-        <StatusDistributionChart
-          eyebrow="Priority"
-          title="Mix by priority"
-          data={fieldMetrics.priorities.map((item) => ({ name: item.name, value: item.count, color: item.color }))}
-        />
-      </section>
-      <section className="grid gap-5 xl:grid-cols-2">
-        <FieldBarChart
-          data={fieldMetrics.issueTypes}
-          eyebrow="Issue type"
-          title="Volume by type"
-          emptyLabel="No issue types in this filter."
-        />
-        <FieldBarChart
-          data={fieldMetrics.components}
-          eyebrow="Components"
-          title="Work by component"
-          emptyLabel="No components on issues in this filter."
-        />
-      </section>
-      <section className="grid gap-5 xl:grid-cols-2">
-        <FieldBarChart
-          data={fieldMetrics.projects}
-          eyebrow="Project"
-          title="Volume by project"
-          emptyLabel="No project keys in this filter."
         />
         <GlassCard className="p-5">
           <p className="eyebrow">Tag throughput</p>

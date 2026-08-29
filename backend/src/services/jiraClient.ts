@@ -5,6 +5,7 @@ import {
   categoryForStatus,
   createdDateJql,
   deriveFlowTimestamps,
+  calculateValidationTime,
   type AnalyticsIssue,
   type AnalyticsSprint,
   type ChangelogHistory,
@@ -632,6 +633,7 @@ export class JiraClient {
         epicName: epic.epicName,
         inProgressAt: flow.inProgressAt,
         lastStatusChangedAt: flow.lastStatusChangedAt,
+        validationDays: calculateValidationTime(created, resolved, statusName, issue.changelog?.histories || []),
         sprintIds: uniqueSprints.length || hasSprintField || fields.closedSprints != null
           ? uniqueSprints.map((sprint) => sprint.id)
           : undefined,

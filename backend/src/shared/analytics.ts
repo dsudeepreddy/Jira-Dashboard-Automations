@@ -51,6 +51,7 @@ export interface AnalyticsIssue {
   inProgressAt?: string | null;
   lastStatusChangedAt?: string | null;
   sprintIds?: number[];
+  validationDays?: number;
 }
 
 export interface ChangelogItem {
@@ -161,6 +162,60 @@ export function deriveFlowTimestamps(
   return { inProgressAt, lastStatusChangedAt };
 }
 
+export function calculateValidationTime(
+  created: string,
+  resolved: string | null | undefined,
+  currentStatus: string,
+  histories: ChangelogHistory[],
+  now = new Date(),
+): number {
+  const sorted = [...histories].sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());
+  const statusTransitions: Array<{ status: string; timestamp: Date }> = [];
+
+  for (const history of sorted) {
+    for (const item of history.items || []) {
+      if (item.field !== 'status') continue;
+      if (statusTransitions.length === 0 && item.fromString) {
+        statusTransitions.push({ status: item.fromString, timestamp: new Date(created) });
+      }
+      statusTransitions.push({ status: item.toString || '', timestamp: new Date(history.created) });
+    }
+  }
+
+  if (statusTransitions.length === 0) {
+    statusTransitions.push({ status: currentStatus, timestamp: new Date(created) });
+  } else {
+    if (statusTransitions[0].timestamp.getTime() > new Date(created).getTime()) {
+      const firstStatusItem = sorted[0]?.items?.find((i) => i.field === 'status');
+      if (firstStatusItem?.fromString) {
+        statusTransitions.unshift({ status: firstStatusItem.fromString, timestamp: new Date(created) });
+      }
+    }
+  }
+
+  let validationMs = 0;
+  const endPoint = resolved ? new Date(resolved) : now;
+
+  for (let i = 0; i < statusTransitions.length; i++) {
+    const transition = statusTransitions[i];
+    const nextTransitionTime = (i + 1 < statusTransitions.length)
+      ? statusTransitions[i + 1].timestamp
+      : endPoint;
+
+    const statusLower = transition.status.toLowerCase();
+    const isValidation = statusLower.includes('validation') || statusLower.includes('validate');
+
+    if (isValidation) {
+      const duration = nextTransitionTime.getTime() - transition.timestamp.getTime();
+      if (duration > 0) {
+        validationMs += duration;
+      }
+    }
+  }
+
+  return Number((validationMs / (1000 * 60 * 60 * 24)).toFixed(2));
+}
+
 function average(values: number[]): number {
   if (!values.length) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -213,6 +268,7 @@ function emptyMetrics(): DashboardMetrics {
     forecast: { remainingIssues: 0, avgWeeklyThroughput: 0, estimatedWeeks: null, estimatedDate: null },
     velocityBasis: 'week',
     fieldMetrics: emptyFieldMetrics(),
+    validationTimeByAuditType: [],
   };
 }
 
@@ -509,6 +565,28 @@ export function aggregateDashboardMetrics(
     ? null
     : new Date(now.getTime() + estimatedWeeks * 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+  const validationMap = new Map<string, { totalDays: number; count: number }>();
+  scoped.forEach((issue) => {
+    const valDays = issue.validationDays || 0;
+    const auditTypes = issue.auditType || [];
+    auditTypes.forEach((type) => {
+      const current = validationMap.get(type) || { totalDays: 0, count: 0 };
+      if (valDays > 0) {
+        current.totalDays += valDays;
+        current.count += 1;
+      }
+      validationMap.set(type, current);
+    });
+  });
+
+  const validationTimeByAuditType = [...validationMap.entries()]
+    .map(([auditType, value]) => ({
+      auditType,
+      avgDays: value.count > 0 ? Number((value.totalDays / value.count).toFixed(2)) : 0,
+      count: value.count,
+    }))
+    .sort((a, b) => b.avgDays - a.avgDays);
+
   return {
     totalIssues: scoped.length,
     openIssues: remainingIssues,
@@ -528,5 +606,6 @@ export function aggregateDashboardMetrics(
     timeInStatus,
     forecast: { remainingIssues, avgWeeklyThroughput, estimatedWeeks, estimatedDate },
     fieldMetrics: aggregateFieldMetrics(scoped, statusLookup),
+    validationTimeByAuditType,
   };
 }

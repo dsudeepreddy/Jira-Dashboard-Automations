@@ -551,6 +551,7 @@ class JiraClient {
                 epicName: epic.epicName,
                 inProgressAt: flow.inProgressAt,
                 lastStatusChangedAt: flow.lastStatusChangedAt,
+                validationDays: (0, analytics_1.calculateValidationTime)(created, resolved, statusName, issue.changelog?.histories || []),
                 sprintIds: uniqueSprints.length || hasSprintField || fields.closedSprints != null
                     ? uniqueSprints.map((sprint) => sprint.id)
                     : undefined,

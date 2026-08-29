@@ -11,6 +11,7 @@ exports.ageBucket = ageBucket;
 exports.categoryForStatus = categoryForStatus;
 exports.isDoneIssue = isDoneIssue;
 exports.deriveFlowTimestamps = deriveFlowTimestamps;
+exports.calculateValidationTime = calculateValidationTime;
 exports.aggregateDashboardMetrics = aggregateDashboardMetrics;
 const dashboardContract_1 = require("./dashboardContract");
 exports.STATUS_COLORS = {
@@ -123,6 +124,48 @@ function deriveFlowTimestamps(created, resolved, histories, statusLookup) {
         inProgressAt = created;
     return { inProgressAt, lastStatusChangedAt };
 }
+function calculateValidationTime(created, resolved, currentStatus, histories, now = new Date()) {
+    const sorted = [...histories].sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());
+    const statusTransitions = [];
+    for (const history of sorted) {
+        for (const item of history.items || []) {
+            if (item.field !== 'status')
+                continue;
+            if (statusTransitions.length === 0 && item.fromString) {
+                statusTransitions.push({ status: item.fromString, timestamp: new Date(created) });
+            }
+            statusTransitions.push({ status: item.toString || '', timestamp: new Date(history.created) });
+        }
+    }
+    if (statusTransitions.length === 0) {
+        statusTransitions.push({ status: currentStatus, timestamp: new Date(created) });
+    }
+    else {
+        if (statusTransitions[0].timestamp.getTime() > new Date(created).getTime()) {
+            const firstStatusItem = sorted[0]?.items?.find((i) => i.field === 'status');
+            if (firstStatusItem?.fromString) {
+                statusTransitions.unshift({ status: firstStatusItem.fromString, timestamp: new Date(created) });
+            }
+        }
+    }
+    let validationMs = 0;
+    const endPoint = resolved ? new Date(resolved) : now;
+    for (let i = 0; i < statusTransitions.length; i++) {
+        const transition = statusTransitions[i];
+        const nextTransitionTime = (i + 1 < statusTransitions.length)
+            ? statusTransitions[i + 1].timestamp
+            : endPoint;
+        const statusLower = transition.status.toLowerCase();
+        const isValidation = statusLower.includes('validation') || statusLower.includes('validate');
+        if (isValidation) {
+            const duration = nextTransitionTime.getTime() - transition.timestamp.getTime();
+            if (duration > 0) {
+                validationMs += duration;
+            }
+        }
+    }
+    return Number((validationMs / (1000 * 60 * 60 * 24)).toFixed(2));
+}
 function average(values) {
     if (!values.length)
         return 0;
@@ -174,6 +217,7 @@ function emptyMetrics() {
         forecast: { remainingIssues: 0, avgWeeklyThroughput: 0, estimatedWeeks: null, estimatedDate: null },
         velocityBasis: 'week',
         fieldMetrics: emptyFieldMetrics(),
+        validationTimeByAuditType: [],
     };
 }
 function cleanKeys(values) {
@@ -452,6 +496,26 @@ function aggregateDashboardMetrics(issues, sprints = [], filters = {}, statusLoo
     const estimatedDate = estimatedWeeks == null
         ? null
         : new Date(now.getTime() + estimatedWeeks * 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const validationMap = new Map();
+    scoped.forEach((issue) => {
+        const valDays = issue.validationDays || 0;
+        const auditTypes = issue.auditType || [];
+        auditTypes.forEach((type) => {
+            const current = validationMap.get(type) || { totalDays: 0, count: 0 };
+            if (valDays > 0) {
+                current.totalDays += valDays;
+                current.count += 1;
+            }
+            validationMap.set(type, current);
+        });
+    });
+    const validationTimeByAuditType = [...validationMap.entries()]
+        .map(([auditType, value]) => ({
+        auditType,
+        avgDays: value.count > 0 ? Number((value.totalDays / value.count).toFixed(2)) : 0,
+        count: value.count,
+    }))
+        .sort((a, b) => b.avgDays - a.avgDays);
     return {
         totalIssues: scoped.length,
         openIssues: remainingIssues,
@@ -471,5 +535,6 @@ function aggregateDashboardMetrics(issues, sprints = [], filters = {}, statusLoo
         timeInStatus,
         forecast: { remainingIssues, avgWeeklyThroughput, estimatedWeeks, estimatedDate },
         fieldMetrics: aggregateFieldMetrics(scoped, statusLookup),
+        validationTimeByAuditType,
     };
 }

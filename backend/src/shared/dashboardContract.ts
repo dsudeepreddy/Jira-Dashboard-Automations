@@ -37,6 +37,7 @@ export interface DashboardIssue {
   storyPoints?: number | null;
   flagged?: boolean;
   latestComment?: LatestHumanComment | null;
+  validationDays?: number;
 }
 
 export interface FieldSlice {
@@ -93,6 +94,7 @@ export interface DashboardMetrics {
     estimatedDate: string | null;
   };
   fieldMetrics: FieldMetrics;
+  validationTimeByAuditType: Array<{ auditType: string; avgDays: number; count: number }>;
 }
 
 export interface DashboardPayload {

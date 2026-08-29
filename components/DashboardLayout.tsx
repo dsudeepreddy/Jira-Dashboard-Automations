@@ -429,12 +429,11 @@ export function DashboardLayout() {
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
             </section>
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {[
                 { label: 'License / BU', value: String(data.metrics.fieldMetrics?.uniqueLicenseBus ?? 0), unit: 'values in view', accent: 'from-cyan-400' },
                 { label: 'Audit types', value: String(data.metrics.fieldMetrics?.uniqueAuditTypes ?? 0), unit: 'in this filter', accent: 'from-indigo-400' },
                 { label: 'Applications', value: String(data.metrics.fieldMetrics?.uniqueApplications ?? 0), unit: 'in this filter', accent: 'from-violet-400' },
-                { label: 'FY epics', value: String(data.metrics.fieldMetrics?.uniqueEpics ?? 0), unit: 'linked epics', accent: 'from-fuchsia-400' },
               ].map((item) => (
                 <GlassCard key={item.label} className="p-4">
                   <div className={`mb-3 h-1 w-10 rounded-full bg-gradient-to-r ${item.accent} to-transparent`} />
@@ -497,7 +496,12 @@ export function DashboardLayout() {
                 {showMore ? 'View less' : 'View more'}
               </button>
             </div>
-            {showMore ? <InsightsView fieldMetrics={data.metrics.fieldMetrics} /> : null}
+            {showMore ? (
+              <InsightsView
+                fieldMetrics={data.metrics.fieldMetrics}
+                validationTimeByAuditType={data.metrics.validationTimeByAuditType}
+              />
+            ) : null}
             <GlassCard className="p-5">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <div>

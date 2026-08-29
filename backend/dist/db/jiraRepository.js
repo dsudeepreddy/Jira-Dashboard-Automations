@@ -177,6 +177,14 @@ function parseJsonStringList(value) {
     }
 }
 function mapIssueRow(row, sprintIds = []) {
+    let validationDays = 0;
+    if (row.raw_json) {
+        try {
+            const parsed = typeof row.raw_json === 'string' ? JSON.parse(row.raw_json) : row.raw_json;
+            validationDays = parsed.validationDays || 0;
+        }
+        catch (e) { }
+    }
     return {
         id: String(row.id),
         key: String(row.issue_key),
@@ -202,6 +210,7 @@ function mapIssueRow(row, sprintIds = []) {
         inProgressAt: row.in_progress_at ? new Date(row.in_progress_at).toISOString() : null,
         lastStatusChangedAt: row.last_status_changed_at ? new Date(row.last_status_changed_at).toISOString() : null,
         sprintIds,
+        validationDays,
     };
 }
 async function getStoredSnapshot(filters = {}) {
@@ -209,7 +218,7 @@ async function getStoredSnapshot(filters = {}) {
         const { sql, values } = issueWhere(filters);
         const [rows] = await connection.execute(`SELECT id, issue_key, project_key, summary, status, status_category, issue_type, priority, assignee, story_points,
               flagged, labels_json, components_json, license_bu_json, audit_type_json, application_json, epic_key, epic_name,
-              created_at, updated_at, resolved_at, in_progress_at, last_status_changed_at
+              created_at, updated_at, resolved_at, in_progress_at, last_status_changed_at, raw_json
        FROM jira_issues i WHERE ${sql} ORDER BY i.updated_at DESC LIMIT 10000`, values);
         if (!rows.length)
             return [];

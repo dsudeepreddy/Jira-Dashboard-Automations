@@ -281,16 +281,6 @@ export function DashboardLayout() {
                       {(data?.licenseBus || []).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
                     </select>
                     <select
-                      aria-label="Audit type"
-                      title={draft.auditType || 'All audit types'}
-                      value={draft.auditType}
-                      onChange={(event) => setDraft({ ...draft, auditType: event.target.value })}
-                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
-                    >
-                      <option value="">All audit types</option>
-                      {(data?.auditTypes || []).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
-                    </select>
-                    <select
                       aria-label="Application"
                       title={draft.application || 'All applications'}
                       value={draft.application}
@@ -373,7 +363,7 @@ export function DashboardLayout() {
               Audit work, <span className="text-cyan-600 dark:text-cyan-300">by FY.</span>
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-              Filter tickets by financial-year epic, License/BU, audit type, and application. Open View more for those breakdowns plus flow metrics.
+              Project-level flow metrics by default. Open View more to pick an audit type and see stage completion, team/reviewer SLAs, and out-of-SLA tickets.
             </p>
           </div>
           <GlassCard spotlight={false} className="px-5 py-4">
@@ -386,12 +376,6 @@ export function DashboardLayout() {
                 <>
                   <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
                   {filters.licenseBu}
-                </>
-              ) : null}
-              {filters.auditType ? (
-                <>
-                  <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
-                  {filters.auditType}
                 </>
               ) : null}
               {filters.application ? (
@@ -499,7 +483,8 @@ export function DashboardLayout() {
             {showMore ? (
               <InsightsView
                 fieldMetrics={data.metrics.fieldMetrics}
-                validationTimeByAuditType={data.metrics.validationTimeByAuditType}
+                auditInsights={data.metrics.auditInsights}
+                auditTypeOptions={data.auditTypes}
               />
             ) : null}
             <GlassCard className="p-5">

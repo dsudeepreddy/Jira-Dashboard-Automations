@@ -4,8 +4,8 @@ import { redisCache } from '../cache/redisClient';
 import {
   categoryForStatus,
   createdDateJql,
+  deriveAuditSlaTimestamps,
   deriveFlowTimestamps,
-  calculateValidationTime,
   type AnalyticsIssue,
   type AnalyticsSprint,
   type ChangelogHistory,
@@ -604,6 +604,7 @@ export class JiraClient {
     const resolved = (fields.resolutiondate as string | null | undefined) || null;
     const created = String(fields.created || '');
     const flow = deriveFlowTimestamps(created, resolved, issue.changelog?.histories || [], this.statusLookup);
+    const sla = deriveAuditSlaTimestamps(created, resolved, statusName, issue.changelog?.histories || []);
     const assignee = fields.assignee as { displayName?: string } | undefined;
     const epic = parseEpic(fields, this.auditFields.epicLink);
 
@@ -633,7 +634,12 @@ export class JiraClient {
         epicName: epic.epicName,
         inProgressAt: flow.inProgressAt,
         lastStatusChangedAt: flow.lastStatusChangedAt,
-        validationDays: calculateValidationTime(created, resolved, statusName, issue.changelog?.histories || []),
+        validationDays: sla.validationDays,
+        approvedAt: sla.approvedAt,
+        underValidationAt: sla.underValidationAt,
+        doneAt: sla.doneAt,
+        teamSlaDays: sla.teamSlaDays,
+        reviewerSlaDays: sla.reviewerSlaDays,
         sprintIds: uniqueSprints.length || hasSprintField || fields.closedSprints != null
           ? uniqueSprints.map((sprint) => sprint.id)
           : undefined,

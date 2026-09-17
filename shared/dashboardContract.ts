@@ -70,6 +70,43 @@ export interface FieldMetrics {
   epics: FieldSlice[];
 }
 
+export interface SlaSummary {
+  avgDays: number;
+  medianDays: number;
+  p90Days: number;
+  completedCount: number;
+  inFlightCount: number;
+  aging: Array<{ bucket: string; count: number }>;
+}
+
+export interface SlaBreachTicket {
+  key: string;
+  summary: string;
+  assignee: string | null;
+  status: string;
+  auditTypes: string[];
+  slaDays: number;
+  targetDays: number;
+  state: 'completed' | 'in_flight';
+}
+
+export interface AuditStatusByType {
+  auditType: string;
+  total: number;
+  stages: Array<{ name: string; value: number; color: string }>;
+}
+
+export interface AuditInsights {
+  workByAuditType: FieldSlice[];
+  statusByAuditType: AuditStatusByType[];
+  teamSlaByAuditType: Array<{ auditType: string; avgDays: number; count: number }>;
+  reviewerSlaByAuditType: Array<{ auditType: string; avgDays: number; count: number }>;
+  teamSlaTargetDays: number;
+  reviewerSlaTargetDays: number;
+  teamSlaBreaches: SlaBreachTicket[];
+  reviewerSlaBreaches: SlaBreachTicket[];
+}
+
 export interface DashboardMetrics {
   totalIssues: number;
   openIssues: number;
@@ -95,6 +132,9 @@ export interface DashboardMetrics {
   };
   fieldMetrics: FieldMetrics;
   validationTimeByAuditType: Array<{ auditType: string; avgDays: number; count: number }>;
+  auditInsights: AuditInsights;
+  teamSlaByAuditType: Array<{ auditType: string; avgDays: number; count: number }>;
+  reviewerSlaByAuditType: Array<{ auditType: string; avgDays: number; count: number }>;
 }
 
 export interface DashboardPayload {

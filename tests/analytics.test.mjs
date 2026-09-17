@@ -235,6 +235,98 @@ test('velocity falls back to ISO weeks when sprint membership is missing', () =>
   assert.equal(metrics.velocityTrend[0].actual, 3);
 });
 
+test('audit insights include stage completion, SLAs, and breach lists', () => {
+  const { deriveAuditSlaTimestamps, aggregateDashboardMetrics } = require('./.tmp/analytics.js');
+
+  const histories = [
+    {
+      created: '2026-01-05T00:00:00.000Z',
+      items: [{ field: 'status', fromString: 'To Do', toString: 'Approved' }],
+    },
+    {
+      created: '2026-01-12T00:00:00.000Z',
+      items: [{ field: 'status', fromString: 'Approved', toString: 'Under Validation' }],
+    },
+    {
+      created: '2026-01-15T00:00:00.000Z',
+      items: [{ field: 'status', fromString: 'Under Validation', toString: 'Done' }],
+    },
+  ];
+  const sla = deriveAuditSlaTimestamps('2026-01-01T00:00:00.000Z', '2026-01-15T00:00:00.000Z', 'Done', histories);
+  assert.equal(sla.teamSlaDays, 7);
+  assert.equal(sla.reviewerSlaDays, 3);
+
+  const issues = [
+    {
+      id: '1',
+      key: 'AUD-1',
+      summary: 'SOX A',
+      status: 'Done',
+      statusCategory: 'done',
+      created: '2026-01-01T00:00:00.000Z',
+      updated: '2026-01-15T00:00:00.000Z',
+      resolved: '2026-01-15T00:00:00.000Z',
+      assignee: 'Alex',
+      auditType: ['SOX'],
+      application: ['Checkout'],
+      approvedAt: sla.approvedAt,
+      underValidationAt: sla.underValidationAt,
+      doneAt: sla.doneAt,
+      teamSlaDays: sla.teamSlaDays,
+      reviewerSlaDays: sla.reviewerSlaDays,
+      validationDays: 3,
+    },
+    {
+      id: '2',
+      key: 'AUD-2',
+      summary: 'SOX B overdue',
+      status: 'In Progress',
+      statusCategory: 'indeterminate',
+      created: '2026-01-01T00:00:00.000Z',
+      updated: '2026-01-10T00:00:00.000Z',
+      assignee: 'Blair',
+      auditType: ['SOX'],
+      application: ['Ledger'],
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      underValidationAt: null,
+      doneAt: null,
+      teamSlaDays: null,
+      reviewerSlaDays: null,
+      validationDays: 0,
+    },
+    {
+      id: '3',
+      key: 'AUD-3',
+      summary: 'ISO',
+      status: 'On Hold',
+      created: '2026-01-01T00:00:00.000Z',
+      updated: '2026-01-01T00:00:00.000Z',
+      auditType: ['ISO'],
+      application: ['Checkout'],
+      teamSlaDays: 4,
+      reviewerSlaDays: 2,
+    },
+  ];
+
+  const metrics = aggregateDashboardMetrics(
+    issues,
+    [],
+    {},
+    undefined,
+    new Date('2026-01-20T00:00:00.000Z'),
+  );
+  assert.ok(metrics.auditInsights);
+  assert.equal(metrics.auditInsights.workByAuditType.length, 2);
+  const soxStages = metrics.auditInsights.statusByAuditType.find((row) => row.auditType === 'SOX');
+  assert.ok(soxStages);
+  assert.equal(soxStages.total, 2);
+  assert.ok(soxStages.stages.find((stage) => stage.name === 'Done')?.value >= 1);
+  assert.equal(metrics.teamSlaByAuditType.find((row) => row.auditType === 'SOX')?.avgDays, 7);
+  assert.equal(metrics.reviewerSlaByAuditType.find((row) => row.auditType === 'SOX')?.avgDays, 3);
+  assert.ok(metrics.auditInsights.teamSlaBreaches.some((ticket) => ticket.key === 'AUD-2'));
+  assert.equal(metrics.auditInsights.teamSlaBreaches.some((ticket) => ticket.key === 'AUD-1'), false);
+});
+
 test('createdDateJql applies each bound independently and makes the end date inclusive', () => {
   const { createdDateJql, shiftIsoDate } = require('./.tmp/analytics.js');
   assert.equal(shiftIsoDate('2026-08-23', 1), '2026-08-24');

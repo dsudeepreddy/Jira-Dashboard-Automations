@@ -192,11 +192,23 @@ function parseJsonStringList(value: unknown): string[] {
 
 function mapIssueRow(row: RowDataPacket, sprintIds: number[] = []): AnalyticsIssue {
   let validationDays = 0;
+  let approvedAt: string | null = null;
+  let underValidationAt: string | null = null;
+  let doneAt: string | null = null;
+  let teamSlaDays: number | null = null;
+  let reviewerSlaDays: number | null = null;
   if (row.raw_json) {
     try {
       const parsed = typeof row.raw_json === 'string' ? JSON.parse(row.raw_json) : row.raw_json;
       validationDays = parsed.validationDays || 0;
-    } catch (e) {}
+      approvedAt = parsed.approvedAt || null;
+      underValidationAt = parsed.underValidationAt || null;
+      doneAt = parsed.doneAt || null;
+      teamSlaDays = parsed.teamSlaDays ?? null;
+      reviewerSlaDays = parsed.reviewerSlaDays ?? null;
+    } catch {
+      /* ignore corrupt raw_json */
+    }
   }
   return {
     id: String(row.id),
@@ -224,6 +236,11 @@ function mapIssueRow(row: RowDataPacket, sprintIds: number[] = []): AnalyticsIss
     lastStatusChangedAt: row.last_status_changed_at ? new Date(row.last_status_changed_at).toISOString() : null,
     sprintIds,
     validationDays,
+    approvedAt,
+    underValidationAt,
+    doneAt,
+    teamSlaDays,
+    reviewerSlaDays,
   };
 }
 

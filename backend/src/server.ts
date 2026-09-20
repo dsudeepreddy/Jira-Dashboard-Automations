@@ -4,9 +4,12 @@ import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { env } from './config/env';
 import { jiraDiagnostics } from './services/jiraClient';
+import { emailDiagnostics, isEmailConfigured } from './services/emailClient';
 import { getMetricsHandler } from './controllers/metricsController';
 import { getIssuesHandler } from './controllers/issuesController';
 import { runJiraSync, syncJiraHandler, jiraWebhookHandler } from './controllers/syncController';
+import { sendMonthlyReportHandler } from './controllers/reportController';
+import { sendMonthlyReport } from './services/monthlyReportService';
 import { initializeDatabase, checkDatabase, isDatabaseEnabled } from './db/database';
 import { getSyncState } from './db/jiraRepository';
 import healthRouter from './routes/health';
@@ -43,6 +46,7 @@ app.get('/api/v1/health', async (_req, res) => {
     service: 'backend-api',
     timestamp: new Date().toISOString(),
     jira: jiraDiagnostics,
+    email: emailDiagnostics(),
     database,
   });
 });
@@ -52,6 +56,7 @@ app.get('/api/v1/metrics', requireDashboardToken, getMetricsHandler);
 app.get('/api/v1/issues', requireDashboardToken, getIssuesHandler);
 app.post('/api/v1/sync', syncLimiter, requireSyncToken, syncJiraHandler);
 app.post('/api/v1/webhooks/jira', syncLimiter, requireSyncToken, jiraWebhookHandler);
+app.post('/api/v1/reports/monthly', syncLimiter, requireSyncToken, sendMonthlyReportHandler);
 app.get('/api/v1/observability/metrics', (_req, res) => {
   res.type('text/plain').send(metricsText());
 });
@@ -76,6 +81,39 @@ async function startScheduledSync() {
   setInterval(() => { void tick(false); }, env.SYNC_INTERVAL_MS);
 }
 
+let lastMonthlyReportKey: string | null = null;
+
+async function startMonthlyReportScheduler() {
+  if (!env.MONTHLY_REPORT_ENABLED) return;
+  const tick = async () => {
+    if (!isEmailConfigured()) {
+      console.log(JSON.stringify({ event: 'monthly_report_skipped', reason: 'email_not_configured' }));
+      return;
+    }
+    const now = new Date();
+    if (now.getUTCDate() !== env.MONTHLY_REPORT_DAY) return;
+    const key = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (lastMonthlyReportKey === key) return;
+    try {
+      const result = await sendMonthlyReport({});
+      lastMonthlyReportKey = key;
+      console.log(JSON.stringify({
+        event: 'monthly_report_sent',
+        subject: result.subject,
+        recipients: result.recipients,
+        messageId: 'messageId' in result ? result.messageId : undefined,
+      }));
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: 'monthly_report_failed',
+        error: error instanceof Error ? error.message : 'unknown',
+      }));
+    }
+  };
+  setInterval(() => { void tick(); }, 60 * 60 * 1000);
+  void tick();
+}
+
 async function start() {
   await initializeDatabase();
   app.listen(env.PORT, () => {
@@ -85,9 +123,11 @@ async function start() {
       port: env.PORT,
       database: env.DB_ENABLED ? 'percona' : 'disabled',
       syncIntervalMs: env.SYNC_INTERVAL_MS,
+      monthlyReportEnabled: env.MONTHLY_REPORT_ENABLED,
     }));
   });
   await startScheduledSync();
+  await startMonthlyReportScheduler();
 }
 
 start().catch((error) => {

@@ -45,6 +45,17 @@ const envSchema = z.object({
   BACKEND_API_TOKEN: z.string().optional().or(z.literal('')),
   SYNC_INTERVAL_MS: z.coerce.number().int().min(0).default(900000),
   STALE_AFTER_MS: z.coerce.number().int().positive().default(1800000),
+  SMTP_HOST: z.string().optional().or(z.literal('')),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: z.preprocess((value) => value === 'true' || value === true, z.boolean().default(false)),
+  SMTP_USER: z.string().optional().or(z.literal('')),
+  SMTP_PASS: z.string().optional().or(z.literal('')),
+  SMTP_FROM: z.string().optional().or(z.literal('')),
+  MONTHLY_REPORT_TO: z.string().optional().or(z.literal('')),
+  MONTHLY_REPORT_PROJECT_KEY: z.string().optional().or(z.literal('')),
+  MONTHLY_REPORT_DASHBOARD_URL: z.string().optional().or(z.literal('')),
+  MONTHLY_REPORT_ENABLED: z.preprocess((value) => value === 'true' || value === true, z.boolean().default(false)),
+  MONTHLY_REPORT_DAY: z.coerce.number().int().min(1).max(28).default(1),
 });
 
 export const env = envSchema.parse(process.env);

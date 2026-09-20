@@ -56,6 +56,7 @@ Date filters apply to created date, except when a sprint is selected (the sprint
 - Paginated issue drill-down; `/metrics` does not return the full issue array
 - URL query filters (`projectKey`, `sprintId`, `issueType`, `startDate`, `endDate`)
 - Prometheus text at `/api/v1/observability/metrics`
+- Monthly SRE Audit stakeholder email (`POST /api/v1/reports/monthly`) with opened/closed by audit type, SLAs, and breach lists
 
 ## Quick start
 
@@ -117,6 +118,37 @@ See [`.env.example`](.env.example) for the full list. Important variables:
 | `SYNC_INTERVAL_MS` | Incremental sync interval. `0` disables the scheduler. First boot runs a full sync if no snapshot exists. |
 | `STALE_AFTER_MS` | Snapshot older than this is marked stale (Percona mode only) |
 | `DB_ENABLED` | Read/write Percona snapshot |
+| `SMTP_HOST` / `SMTP_FROM` / `MONTHLY_REPORT_TO` | SMTP + stakeholder recipients for monthly email |
+| `MONTHLY_REPORT_ENABLED` | Auto-send previous month on `MONTHLY_REPORT_DAY` (UTC, default 1) |
+| `MONTHLY_REPORT_DASHBOARD_URL` | Optional “Open dashboard” link in the email |
+
+### Monthly report
+
+Subject line: `SRE Audit Monthly Report — August 2026` (optional `· PROJECT`).
+
+The HTML mail includes a short narrative plus:
+
+1. Opened / closed / net change / still open  
+2. On hold & under validation snapshot  
+3. Opened & closed **by audit type**, with team & reviewer SLA averages for that month  
+4. Top applications  
+5. Open tickets outside usual team/reviewer SLA  
+
+Preview without sending:
+
+```bash
+curl -X POST "http://localhost:5001/api/v1/reports/monthly?dryRun=true&month=2026-08" \
+  -H "x-sync-token: $SYNC_API_TOKEN"
+```
+
+Send for real (uses `MONTHLY_REPORT_TO`):
+
+```bash
+curl -X POST "http://localhost:5001/api/v1/reports/monthly" \
+  -H "x-sync-token: $SYNC_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"month":"2026-08"}'
+```
 
 Jira webhooks can call `POST /api/v1/webhooks/jira?token=YOUR_SYNC_TOKEN`.
 

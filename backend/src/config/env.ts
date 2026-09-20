@@ -4,6 +4,15 @@ import { z } from 'zod';
 dotenv.config();
 dotenv.config({ path: '../.env.local' });
 
+function asBool(value: unknown, fallback = false): boolean {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(5000),
@@ -29,15 +38,15 @@ const envSchema = z.object({
   CACHE_TTL_MS: z.coerce.number().default(60000),
   JIRA_MAX_ISSUES: z.coerce.number().int().positive().max(10000).default(1000),
   JIRA_PAGE_SIZE: z.coerce.number().int().positive().max(100).default(50),
-  DB_ENABLED: z.preprocess((value) => value === 'true' || value === true, z.boolean().default(false)),
-  DB_AUTO_CREATE: z.preprocess((value) => value === 'true' || value === true, z.boolean().default(false)),
+  DB_ENABLED: z.preprocess((value) => asBool(value, false), z.boolean().default(false)),
+  DB_AUTO_CREATE: z.preprocess((value) => asBool(value, false), z.boolean().default(false)),
   DB_HOST: z.string().default('percona-proxy'),
   DB_PORT: z.coerce.number().default(3306),
   DB_NAME: z.string().default('jira_analytics'),
   DB_USER: z.string().default('jira_dashboard'),
   DB_PASSWORD: z.string().default(''),
-  DB_SSL: z.preprocess((value) => (value === undefined || value === '' ? undefined : value === 'true' || value === true), z.boolean().default(true)),
-  DB_SSL_VERIFY: z.preprocess((value) => value !== 'false' && value !== false, z.boolean().default(true)),
+  DB_SSL: z.preprocess((value) => (value === undefined || value === '' ? undefined : asBool(value, true)), z.boolean().default(true)),
+  DB_SSL_VERIFY: z.preprocess((value) => asBool(value, true), z.boolean().default(true)),
   DB_CONNECTION_LIMIT: z.coerce.number().int().positive().max(100).default(10),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   LOG_LEVEL: z.string().default('info'),
@@ -47,14 +56,16 @@ const envSchema = z.object({
   STALE_AFTER_MS: z.coerce.number().int().positive().default(1800000),
   SMTP_HOST: z.string().optional().or(z.literal('')),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
-  SMTP_SECURE: z.preprocess((value) => value === 'true' || value === true, z.boolean().default(false)),
+  SMTP_SECURE: z.preprocess((value) => asBool(value, false), z.boolean().default(false)),
   SMTP_USER: z.string().optional().or(z.literal('')),
   SMTP_PASS: z.string().optional().or(z.literal('')),
   SMTP_FROM: z.string().optional().or(z.literal('')),
+  /** HTTP CONNECT proxy for SMTP, e.g. http://tinyproxy:8888 */
+  SMTP_PROXY: z.string().optional().or(z.literal('')),
   MONTHLY_REPORT_TO: z.string().optional().or(z.literal('')),
   MONTHLY_REPORT_PROJECT_KEY: z.string().optional().or(z.literal('')),
   MONTHLY_REPORT_DASHBOARD_URL: z.string().optional().or(z.literal('')),
-  MONTHLY_REPORT_ENABLED: z.preprocess((value) => value === 'true' || value === true, z.boolean().default(false)),
+  MONTHLY_REPORT_ENABLED: z.preprocess((value) => asBool(value, false), z.boolean().default(false)),
   MONTHLY_REPORT_DAY: z.coerce.number().int().min(1).max(28).default(1),
 });
 

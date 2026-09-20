@@ -124,6 +124,9 @@ async function start() {
       database: env.DB_ENABLED ? 'percona' : 'disabled',
       syncIntervalMs: env.SYNC_INTERVAL_MS,
       monthlyReportEnabled: env.MONTHLY_REPORT_ENABLED,
+      emailConfigured: isEmailConfigured(),
+      smtpHost: env.SMTP_HOST || null,
+      smtpProxy: env.SMTP_PROXY || null,
     }));
   });
   await startScheduledSync();

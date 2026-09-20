@@ -134,20 +134,30 @@ The HTML mail includes a short narrative plus:
 4. Top applications  
 5. Open tickets outside usual team/reviewer SLA  
 
-Preview without sending:
+**Send immediately (recommended on VM / Podman):**
 
 ```bash
-curl -X POST "http://localhost:5001/api/v1/reports/monthly?dryRun=true&month=2026-08" \
-  -H "x-sync-token: $SYNC_API_TOKEN"
+# rebuild backend image so dist/scripts is present
+podman-compose up -d --build --force-recreate backend-api
+
+# preview (no SMTP)
+podman exec jira-backend-api node dist/scripts/sendMonthlyReport.js --dry-run
+
+# send for real
+podman exec jira-backend-api node dist/scripts/sendMonthlyReport.js
+
+# or via helper script
+./scripts/send-monthly-report.sh --dry-run
+./scripts/send-monthly-report.sh
 ```
 
-Send for real (uses `MONTHLY_REPORT_TO`):
+HTTP alternative (requires `SYNC_API_TOKEN` when `NODE_ENV=production`):
 
 ```bash
-curl -X POST "http://localhost:5001/api/v1/reports/monthly" \
+curl -sS -v --max-time 180 -X POST "http://localhost:5001/api/v1/reports/monthly?dryRun=true" \
   -H "x-sync-token: $SYNC_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"month":"2026-08"}'
+  -d '{}'
 ```
 
 Jira webhooks can call `POST /api/v1/webhooks/jira?token=YOUR_SYNC_TOKEN`.

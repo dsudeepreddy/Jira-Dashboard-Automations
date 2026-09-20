@@ -11,6 +11,13 @@ const bodySchema = z.object({
 
 export async function sendMonthlyReportHandler(req: Request, res: Response, next: NextFunction) {
   try {
+    console.log(JSON.stringify({
+      event: 'monthly_report_http_accepted',
+      requestId: res.locals.requestId,
+      dryRun: req.body?.dryRun === true || req.query.dryRun === 'true' || req.query.dryRun === '1',
+      month: req.body?.month || req.query.month || null,
+    }));
+
     const parsed = bodySchema.parse({
       ...req.body,
       dryRun: req.body?.dryRun === true || req.query.dryRun === 'true' || req.query.dryRun === '1',

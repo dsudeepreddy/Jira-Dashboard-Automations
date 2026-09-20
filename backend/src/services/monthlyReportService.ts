@@ -47,10 +47,26 @@ export async function sendMonthlyReport(options: {
   to?: string;
   dryRun?: boolean;
 } = {}) {
+  const started = Date.now();
+  console.log(JSON.stringify({
+    event: 'monthly_report_build_start',
+    dryRun: Boolean(options.dryRun),
+    month: options.month || null,
+    projectKey: options.projectKey || env.MONTHLY_REPORT_PROJECT_KEY || env.JIRA_PROJECT_KEY || null,
+  }));
+
   const report = await generateMonthlyReport({
     month: options.month,
     projectKey: options.projectKey,
   });
+  console.log(JSON.stringify({
+    event: 'monthly_report_build_done',
+    durationMs: Date.now() - started,
+    opened: report.totals.opened,
+    closed: report.totals.closed,
+    periodLabel: report.periodLabel,
+  }));
+
   const rendered = renderMonthlyReportEmail(report, env.MONTHLY_REPORT_DASHBOARD_URL || undefined);
   const recipients = parseRecipients(options.to || env.MONTHLY_REPORT_TO);
 

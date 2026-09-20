@@ -1,3 +1,5 @@
+import http from 'node:http';
+import type { Socket } from 'node:net';
 import nodemailer from 'nodemailer';
 import { env, maskSecret } from '../config/env';
 
@@ -19,6 +21,67 @@ export function emailDiagnostics() {
   };
 }
 
+/** HTTP CONNECT through tinyproxy-style proxies (same idea as curl -x). */
+export function connectViaHttpProxy(
+  proxyUrl: string,
+  targetHost: string,
+  targetPort: number,
+  timeoutMs = 30_000,
+): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const ok = (socket: Socket) => {
+      if (settled) return;
+      settled = true;
+      resolve(socket);
+    };
+
+    let proxy: URL;
+    try {
+      proxy = new URL(proxyUrl);
+    } catch {
+      fail(new Error(`Invalid SMTP_PROXY URL: ${proxyUrl}`));
+      return;
+    }
+
+    const req = http.request({
+      protocol: proxy.protocol,
+      hostname: proxy.hostname,
+      port: proxy.port || (proxy.protocol === 'https:' ? 443 : 80),
+      method: 'CONNECT',
+      path: `${targetHost}:${targetPort}`,
+      headers: {
+        Host: `${targetHost}:${targetPort}`,
+        'Proxy-Connection': 'Keep-Alive',
+      },
+      timeout: timeoutMs,
+    });
+
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      fail(new Error(`Proxy CONNECT timed out after ${timeoutMs}ms via ${proxyUrl}`));
+    });
+
+    req.on('connect', (res, socket) => {
+      if (res.statusCode !== 200) {
+        socket.destroy();
+        fail(new Error(`Proxy CONNECT failed with status ${res.statusCode} via ${proxyUrl}`));
+        return;
+      }
+      socket.setTimeout(timeoutMs);
+      ok(socket);
+    });
+
+    req.on('error', (error) => fail(error instanceof Error ? error : new Error(String(error))));
+    req.end();
+  });
+}
+
 export async function sendMail(input: {
   to: string | string[];
   subject: string;
@@ -29,43 +92,72 @@ export async function sendMail(input: {
     throw new Error('SMTP is not configured. Set SMTP_HOST and SMTP_FROM.');
   }
 
+  const host = env.SMTP_HOST;
+  const port = env.SMTP_PORT;
+  console.log(JSON.stringify({
+    event: 'smtp_send_start',
+    host,
+    port,
+    proxy: env.SMTP_PROXY || null,
+    to: Array.isArray(input.to) ? input.to : [input.to],
+  }));
+
   const transporter = nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port: env.SMTP_PORT,
+    host,
+    port,
     secure: env.SMTP_SECURE,
     auth: env.SMTP_USER
       ? { user: env.SMTP_USER, pass: env.SMTP_PASS || '' }
       : undefined,
-    ...(env.SMTP_PROXY ? { proxy: env.SMTP_PROXY } : {}),
     connectionTimeout: 30_000,
     greetingTimeout: 30_000,
     socketTimeout: 60_000,
     tls: {
       rejectUnauthorized: false,
     },
+    logger: false,
+    debug: false,
   });
 
-  // Required for HTTP CONNECT / SOCKS proxy support in Nodemailer.
+  // Nodemailer's runtime supports getSocket; types omit it.
   if (env.SMTP_PROXY) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const socks = require('socks');
-      transporter.set('proxy_socks_module', socks);
-    } catch {
-      throw new Error('SMTP_PROXY is set but the "socks" package is missing. Run npm install socks in backend/.');
-    }
+    const proxyUrl = env.SMTP_PROXY;
+    (transporter as unknown as {
+      getSocket: (
+        options: { host?: string; port?: number },
+        callback: (error: Error | null, data?: { connection: Socket }) => void,
+      ) => void;
+    }).getSocket = (options, callback) => {
+      const targetHost = options.host || host;
+      const targetPort = options.port || port;
+      connectViaHttpProxy(proxyUrl, targetHost, targetPort)
+        .then((connection) => callback(null, { connection }))
+        .catch((error) => callback(error instanceof Error ? error : new Error(String(error))));
+    };
   }
 
-  const result = await transporter.sendMail({
-    from: env.SMTP_FROM,
-    to: Array.isArray(input.to) ? input.to.join(', ') : input.to,
-    subject: input.subject,
-    text: input.text,
-    html: input.html,
-  });
-
-  return {
-    messageId: String(result.messageId || ''),
-    accepted: (result.accepted || []).map(String),
-  };
+  try {
+    const result = await transporter.sendMail({
+      from: env.SMTP_FROM,
+      to: Array.isArray(input.to) ? input.to.join(', ') : input.to,
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
+    });
+    console.log(JSON.stringify({
+      event: 'smtp_send_ok',
+      messageId: result.messageId,
+      accepted: result.accepted,
+    }));
+    return {
+      messageId: String(result.messageId || ''),
+      accepted: (result.accepted || []).map(String),
+    };
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'smtp_send_failed',
+      error: error instanceof Error ? error.message : 'unknown',
+    }));
+    throw error;
+  }
 }

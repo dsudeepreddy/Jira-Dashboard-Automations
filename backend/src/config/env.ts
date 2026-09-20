@@ -69,7 +69,19 @@ const envSchema = z.object({
   MONTHLY_REPORT_DAY: z.coerce.number().int().min(1).max(28).default(1),
 });
 
-export const env = envSchema.parse(process.env);
+const parsedEnv = envSchema.parse(process.env);
+
+// Allow SMTP_HOST="smtp.example.com:25" by splitting host/port.
+if (parsedEnv.SMTP_HOST && parsedEnv.SMTP_HOST.includes(':') && !parsedEnv.SMTP_HOST.includes('://')) {
+  const [host, portText] = parsedEnv.SMTP_HOST.split(':');
+  const port = Number(portText);
+  if (host && Number.isFinite(port)) {
+    parsedEnv.SMTP_HOST = host;
+    parsedEnv.SMTP_PORT = port;
+  }
+}
+
+export const env = parsedEnv;
 
 export function maskSecret(value?: string) {
   if (!value) return 'not-configured';

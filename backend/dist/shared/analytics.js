@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.STATUS_COLORS = void 0;
+exports.AUDIT_STATUS_BUCKETS = exports.DEFAULT_REVIEWER_SLA_TARGET_DAYS = exports.DEFAULT_TEAM_SLA_TARGET_DAYS = exports.STATUS_COLORS = void 0;
 exports.isoWeekKey = isoWeekKey;
 exports.toSafeDate = toSafeDate;
 exports.shiftIsoDate = shiftIsoDate;
@@ -11,6 +11,12 @@ exports.ageBucket = ageBucket;
 exports.categoryForStatus = categoryForStatus;
 exports.isDoneIssue = isDoneIssue;
 exports.deriveFlowTimestamps = deriveFlowTimestamps;
+exports.isApprovedStatus = isApprovedStatus;
+exports.isOnHoldStatus = isOnHoldStatus;
+exports.isUnderValidationStatus = isUnderValidationStatus;
+exports.isAuditDoneStatus = isAuditDoneStatus;
+exports.bucketAuditStatus = bucketAuditStatus;
+exports.deriveAuditSlaTimestamps = deriveAuditSlaTimestamps;
 exports.calculateValidationTime = calculateValidationTime;
 exports.aggregateDashboardMetrics = aggregateDashboardMetrics;
 const dashboardContract_1 = require("./dashboardContract");
@@ -26,10 +32,25 @@ exports.STATUS_COLORS = {
     Reopened: '#fb7185',
     Approve: '#ec4899',
     Approved: '#db2777',
+    'Approve / Approved': '#db2777',
+    'On Hold': '#f97316',
+    'Under Validation': '#a855f7',
 };
 const DONE_NAMES = new Set(['done', 'completed', 'closed', 'resolved', 'complete']);
 const PROGRESS_NAMES = new Set(['in progress', 'indeterminate', 'in review', 'in development', 'doing']);
 const SLICE_COLORS = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#fb7185', '#c084fc', '#2dd4bf', '#f97316', '#818cf8', '#94a3b8'];
+/** Default targets for “out of usual SLA” ticket lists (calendar days). */
+exports.DEFAULT_TEAM_SLA_TARGET_DAYS = 7;
+exports.DEFAULT_REVIEWER_SLA_TARGET_DAYS = 5;
+/** Canonical audit workflow stages for View more completion dashboards. */
+exports.AUDIT_STATUS_BUCKETS = [
+    'To Do',
+    'Approve / Approved',
+    'On Hold',
+    'In Progress',
+    'Under Validation',
+    'Done',
+];
 function isoWeekKey(value) {
     const utc = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
     const day = utc.getUTCDay() || 7;
@@ -123,6 +144,82 @@ function deriveFlowTimestamps(created, resolved, histories, statusLookup) {
     if (!inProgressAt && resolved)
         inProgressAt = created;
     return { inProgressAt, lastStatusChangedAt };
+}
+function isApprovedStatus(name) {
+    const n = name.toLowerCase().trim();
+    return n === 'approved' || n === 'approve' || /\bapproved\b/.test(n) || /\bapprove\b/.test(n);
+}
+function isOnHoldStatus(name) {
+    const n = name.toLowerCase().trim();
+    return n.includes('on hold') || n.includes('on-hold') || n === 'hold' || n.includes('blocked');
+}
+function isUnderValidationStatus(name) {
+    const n = name.toLowerCase().trim();
+    return n.includes('under validation') || n === 'validation' || (n.includes('validate') && !n.includes('invalid'));
+}
+function isAuditDoneStatus(name) {
+    const n = name.toLowerCase().trim();
+    return DONE_NAMES.has(n) || /\b(done|closed|complete|resolved)\b/.test(n);
+}
+function bucketAuditStatus(status) {
+    const n = status.toLowerCase().trim();
+    if (isUnderValidationStatus(status))
+        return 'Under Validation';
+    if (isApprovedStatus(status))
+        return 'Approve / Approved';
+    if (isOnHoldStatus(status))
+        return 'On Hold';
+    if (isAuditDoneStatus(status))
+        return 'Done';
+    if (n.includes('to do') || n === 'todo' || n === 'backlog' || n === 'new' || n === 'open' || n === 'reopened')
+        return 'To Do';
+    if (n.includes('progress') || n.includes('doing') || n.includes('development') || n.includes('in review'))
+        return 'In Progress';
+    return 'Other';
+}
+/**
+ * Team SLA: first Approved → first Under Validation.
+ * Reviewer SLA: first Under Validation → first Done (or resolutiondate).
+ */
+function deriveAuditSlaTimestamps(created, resolved, currentStatus, histories, now = new Date()) {
+    const sorted = [...histories].sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());
+    let approvedAt = null;
+    let underValidationAt = null;
+    let doneAt = resolved || null;
+    for (const history of sorted) {
+        for (const item of history.items || []) {
+            if (item.field !== 'status')
+                continue;
+            const to = item.toString || '';
+            if (!approvedAt && isApprovedStatus(to))
+                approvedAt = history.created;
+            if (!underValidationAt && isUnderValidationStatus(to))
+                underValidationAt = history.created;
+            if (!doneAt && isAuditDoneStatus(to))
+                doneAt = history.created;
+        }
+    }
+    // Current status fallbacks when changelog never recorded the transition.
+    if (!approvedAt && isApprovedStatus(currentStatus))
+        approvedAt = created;
+    if (!underValidationAt && isUnderValidationStatus(currentStatus))
+        underValidationAt = created;
+    if (!doneAt && isAuditDoneStatus(currentStatus))
+        doneAt = resolved || created;
+    const teamSlaDays = approvedAt && underValidationAt
+        ? Number(daysBetween(new Date(approvedAt), new Date(underValidationAt)).toFixed(2))
+        : null;
+    const reviewerSlaDays = underValidationAt && doneAt
+        ? Number(daysBetween(new Date(underValidationAt), new Date(doneAt)).toFixed(2))
+        : null;
+    return {
+        approvedAt,
+        underValidationAt,
+        doneAt,
+        teamSlaDays,
+        reviewerSlaDays,
+        validationDays: calculateValidationTime(created, resolved, currentStatus, histories, now),
+    };
 }
 function calculateValidationTime(created, resolved, currentStatus, histories, now = new Date()) {
     const sorted = [...histories].sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());
@@ -218,10 +315,145 @@ function emptyMetrics() {
         velocityBasis: 'week',
         fieldMetrics: emptyFieldMetrics(),
         validationTimeByAuditType: [],
+        auditInsights: emptyAuditInsights(),
+        teamSlaByAuditType: [],
+        reviewerSlaByAuditType: [],
+    };
+}
+function emptyAuditInsights() {
+    return {
+        workByAuditType: [],
+        statusByAuditType: [],
+        teamSlaByAuditType: [],
+        reviewerSlaByAuditType: [],
+        teamSlaTargetDays: exports.DEFAULT_TEAM_SLA_TARGET_DAYS,
+        reviewerSlaTargetDays: exports.DEFAULT_REVIEWER_SLA_TARGET_DAYS,
+        teamSlaBreaches: [],
+        reviewerSlaBreaches: [],
     };
 }
 function cleanKeys(values) {
     return [...new Set((values || []).map((value) => (value || '').trim()).filter(Boolean))];
+}
+function slaByAuditType(issues, daysOf) {
+    const map = new Map();
+    issues.forEach((issue) => {
+        const days = daysOf(issue);
+        if (days == null || !Number.isFinite(days) || days < 0)
+            return;
+        const types = cleanKeys(issue.auditType);
+        if (!types.length)
+            types.push('(none)');
+        types.forEach((type) => {
+            const current = map.get(type) || { total: 0, count: 0 };
+            current.total += days;
+            current.count += 1;
+            map.set(type, current);
+        });
+    });
+    return [...map.entries()]
+        .map(([auditType, value]) => ({
+        auditType,
+        avgDays: Number((value.total / value.count).toFixed(2)),
+        count: value.count,
+    }))
+        .sort((a, b) => b.avgDays - a.avgDays);
+}
+function buildStatusByAuditType(issues) {
+    const map = new Map();
+    issues.forEach((issue) => {
+        const types = cleanKeys(issue.auditType);
+        if (!types.length)
+            types.push('(none)');
+        const bucket = bucketAuditStatus(issue.status);
+        types.forEach((type) => {
+            const stages = map.get(type) || new Map();
+            stages.set(bucket, (stages.get(bucket) || 0) + 1);
+            map.set(type, stages);
+        });
+    });
+    return [...map.entries()]
+        .map(([auditType, stages]) => {
+        const stageRows = [
+            ...exports.AUDIT_STATUS_BUCKETS.map((name, index) => ({
+                name,
+                value: stages.get(name) || 0,
+                color: exports.STATUS_COLORS[name] || SLICE_COLORS[index % SLICE_COLORS.length],
+            })),
+            ...(stages.get('Other')
+                ? [{ name: 'Other', value: stages.get('Other') || 0, color: '#94a3b8' }]
+                : []),
+        ];
+        return {
+            auditType,
+            total: stageRows.reduce((sum, row) => sum + row.value, 0),
+            stages: stageRows,
+        };
+    })
+        .sort((a, b) => b.total - a.total);
+}
+function collectSlaBreaches(issues, options) {
+    const breaches = [];
+    issues.forEach((issue) => {
+        const auditTypes = cleanKeys(issue.auditType);
+        const completed = options.completedDaysOf(issue);
+        if (typeof completed === 'number' && completed > options.targetDays) {
+            breaches.push({
+                key: issue.key,
+                summary: issue.summary,
+                assignee: issue.assignee || null,
+                status: issue.status,
+                auditTypes,
+                slaDays: Number(completed.toFixed(2)),
+                targetDays: options.targetDays,
+                state: 'completed',
+            });
+            return;
+        }
+        if (!options.isInFlight(issue))
+            return;
+        const start = toSafeDate(options.inFlightStartOf(issue));
+        if (!start)
+            return;
+        const elapsed = daysBetween(start, options.now);
+        if (elapsed <= options.targetDays)
+            return;
+        breaches.push({
+            key: issue.key,
+            summary: issue.summary,
+            assignee: issue.assignee || null,
+            status: issue.status,
+            auditTypes,
+            slaDays: Number(elapsed.toFixed(2)),
+            targetDays: options.targetDays,
+            state: 'in_flight',
+        });
+    });
+    return breaches.sort((a, b) => b.slaDays - a.slaDays).slice(0, 50);
+}
+function buildAuditInsights(scoped, fieldMetrics, statusLookup, now, teamSlaByAuditType, reviewerSlaByAuditType) {
+    return {
+        workByAuditType: fieldMetrics.auditTypes,
+        statusByAuditType: buildStatusByAuditType(scoped),
+        teamSlaByAuditType,
+        reviewerSlaByAuditType,
+        teamSlaTargetDays: exports.DEFAULT_TEAM_SLA_TARGET_DAYS,
+        reviewerSlaTargetDays: exports.DEFAULT_REVIEWER_SLA_TARGET_DAYS,
+        teamSlaBreaches: collectSlaBreaches(scoped, {
+            completedDaysOf: (issue) => issue.teamSlaDays,
+            inFlightStartOf: (issue) => issue.approvedAt,
+            isInFlight: (issue) => Boolean(issue.approvedAt) && !issue.underValidationAt && !isDoneIssue(issue, statusLookup),
+            targetDays: exports.DEFAULT_TEAM_SLA_TARGET_DAYS,
+            now,
+        }),
+        reviewerSlaBreaches: collectSlaBreaches(scoped, {
+            completedDaysOf: (issue) => issue.reviewerSlaDays,
+            inFlightStartOf: (issue) => issue.underValidationAt,
+            isInFlight: (issue) => Boolean(issue.underValidationAt) && !issue.doneAt && !isDoneIssue(issue, statusLookup),
+            targetDays: exports.DEFAULT_REVIEWER_SLA_TARGET_DAYS,
+            now,
+        }),
+    };
 }
 function fieldSlices(issues, keysOf, statusLookup, options = {}) {
     const { includeEmpty = false, emptyName = '(none)', limit = 12 } = options;
@@ -516,6 +748,10 @@ function aggregateDashboardMetrics(issues, sprints = [], filters = {}, statusLoo
         count: value.count,
     }))
         .sort((a, b) => b.avgDays - a.avgDays);
+    const teamSlaByAuditType = slaByAuditType(scoped, (issue) => issue.teamSlaDays);
+    const reviewerSlaByAuditType = slaByAuditType(scoped, (issue) => issue.reviewerSlaDays);
+    const fieldMetrics = aggregateFieldMetrics(scoped, statusLookup);
+    const auditInsights = buildAuditInsights(scoped, fieldMetrics, statusLookup, now, teamSlaByAuditType, reviewerSlaByAuditType);
     return {
         totalIssues: scoped.length,
         openIssues: remainingIssues,
@@ -534,7 +770,10 @@ function aggregateDashboardMetrics(issues, sprints = [], filters = {}, statusLoo
         assigneeLoad,
         timeInStatus,
         forecast: { remainingIssues, avgWeeklyThroughput, estimatedWeeks, estimatedDate },
-        fieldMetrics: aggregateFieldMetrics(scoped, statusLookup),
+        fieldMetrics,
         validationTimeByAuditType,
+        auditInsights,
+        teamSlaByAuditType,
+        reviewerSlaByAuditType,
     };
 }

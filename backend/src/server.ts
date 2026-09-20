@@ -82,6 +82,7 @@ async function startScheduledSync() {
 }
 
 let lastMonthlyReportKey: string | null = null;
+let loggedWaitingForReportDay = false;
 
 async function startMonthlyReportScheduler() {
   if (!env.MONTHLY_REPORT_ENABLED) return;
@@ -91,7 +92,20 @@ async function startMonthlyReportScheduler() {
       return;
     }
     const now = new Date();
-    if (now.getUTCDate() !== env.MONTHLY_REPORT_DAY) return;
+    const day = now.getUTCDate();
+    if (day !== env.MONTHLY_REPORT_DAY) {
+      if (!loggedWaitingForReportDay) {
+        loggedWaitingForReportDay = true;
+        console.log(JSON.stringify({
+          event: 'monthly_report_waiting',
+          utcDate: day,
+          reportDay: env.MONTHLY_REPORT_DAY,
+          nextAutoSend: `Next auto-send is on UTC day ${env.MONTHLY_REPORT_DAY} (previous calendar month). To send now: POST /api/v1/reports/monthly`,
+        }));
+      }
+      return;
+    }
+    loggedWaitingForReportDay = false;
     const key = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
     if (lastMonthlyReportKey === key) return;
     try {

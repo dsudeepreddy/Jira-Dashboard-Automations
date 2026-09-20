@@ -523,6 +523,7 @@ class JiraClient {
         const resolved = fields.resolutiondate || null;
         const created = String(fields.created || '');
         const flow = (0, analytics_1.deriveFlowTimestamps)(created, resolved, issue.changelog?.histories || [], this.statusLookup);
+        const sla = (0, analytics_1.deriveAuditSlaTimestamps)(created, resolved, statusName, issue.changelog?.histories || []);
         const assignee = fields.assignee;
         const epic = parseEpic(fields, this.auditFields.epicLink);
         return {
@@ -551,7 +552,12 @@ class JiraClient {
                 epicName: epic.epicName,
                 inProgressAt: flow.inProgressAt,
                 lastStatusChangedAt: flow.lastStatusChangedAt,
-                validationDays: (0, analytics_1.calculateValidationTime)(created, resolved, statusName, issue.changelog?.histories || []),
+                validationDays: sla.validationDays,
+                approvedAt: sla.approvedAt,
+                underValidationAt: sla.underValidationAt,
+                doneAt: sla.doneAt,
+                teamSlaDays: sla.teamSlaDays,
+                reviewerSlaDays: sla.reviewerSlaDays,
                 sprintIds: uniqueSprints.length || hasSprintField || fields.closedSprints != null
                     ? uniqueSprints.map((sprint) => sprint.id)
                     : undefined,

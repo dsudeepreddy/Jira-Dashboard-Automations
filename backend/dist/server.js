@@ -9,9 +9,12 @@ const helmet_1 = __importDefault(require("helmet"));
 const express_rate_limit_1 = require("express-rate-limit");
 const env_1 = require("./config/env");
 const jiraClient_1 = require("./services/jiraClient");
+const emailClient_1 = require("./services/emailClient");
 const metricsController_1 = require("./controllers/metricsController");
 const issuesController_1 = require("./controllers/issuesController");
 const syncController_1 = require("./controllers/syncController");
+const reportController_1 = require("./controllers/reportController");
+const monthlyReportService_1 = require("./services/monthlyReportService");
 const database_1 = require("./db/database");
 const jiraRepository_1 = require("./db/jiraRepository");
 const health_1 = __importDefault(require("./routes/health"));
@@ -43,6 +46,7 @@ app.get('/api/v1/health', async (_req, res) => {
         service: 'backend-api',
         timestamp: new Date().toISOString(),
         jira: jiraClient_1.jiraDiagnostics,
+        email: (0, emailClient_1.emailDiagnostics)(),
         database,
     });
 });
@@ -51,6 +55,7 @@ app.get('/api/v1/metrics', auth_1.requireDashboardToken, metricsController_1.get
 app.get('/api/v1/issues', auth_1.requireDashboardToken, issuesController_1.getIssuesHandler);
 app.post('/api/v1/sync', syncLimiter, auth_1.requireSyncToken, syncController_1.syncJiraHandler);
 app.post('/api/v1/webhooks/jira', syncLimiter, auth_1.requireSyncToken, syncController_1.jiraWebhookHandler);
+app.post('/api/v1/reports/monthly', syncLimiter, auth_1.requireSyncToken, reportController_1.sendMonthlyReportHandler);
 app.get('/api/v1/observability/metrics', (_req, res) => {
     res.type('text/plain').send((0, observability_1.metricsText)());
 });
@@ -74,6 +79,54 @@ async function startScheduledSync() {
     await tick(!state?.last_success_at);
     setInterval(() => { void tick(false); }, env_1.env.SYNC_INTERVAL_MS);
 }
+let lastMonthlyReportKey = null;
+let loggedWaitingForReportDay = false;
+async function startMonthlyReportScheduler() {
+    if (!env_1.env.MONTHLY_REPORT_ENABLED)
+        return;
+    const tick = async () => {
+        if (!(0, emailClient_1.isEmailConfigured)()) {
+            console.log(JSON.stringify({ event: 'monthly_report_skipped', reason: 'email_not_configured' }));
+            return;
+        }
+        const now = new Date();
+        const day = now.getUTCDate();
+        if (day !== env_1.env.MONTHLY_REPORT_DAY) {
+            if (!loggedWaitingForReportDay) {
+                loggedWaitingForReportDay = true;
+                console.log(JSON.stringify({
+                    event: 'monthly_report_waiting',
+                    utcDate: day,
+                    reportDay: env_1.env.MONTHLY_REPORT_DAY,
+                    nextAutoSend: `Next auto-send is on UTC day ${env_1.env.MONTHLY_REPORT_DAY} (previous calendar month). To send now: POST /api/v1/reports/monthly`,
+                }));
+            }
+            return;
+        }
+        loggedWaitingForReportDay = false;
+        const key = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+        if (lastMonthlyReportKey === key)
+            return;
+        try {
+            const result = await (0, monthlyReportService_1.sendMonthlyReport)({});
+            lastMonthlyReportKey = key;
+            console.log(JSON.stringify({
+                event: 'monthly_report_sent',
+                subject: result.subject,
+                recipients: result.recipients,
+                messageId: 'messageId' in result ? result.messageId : undefined,
+            }));
+        }
+        catch (error) {
+            console.error(JSON.stringify({
+                event: 'monthly_report_failed',
+                error: error instanceof Error ? error.message : 'unknown',
+            }));
+        }
+    };
+    setInterval(() => { void tick(); }, 60 * 60 * 1000);
+    void tick();
+}
 async function start() {
     await (0, database_1.initializeDatabase)();
     app.listen(env_1.env.PORT, () => {
@@ -83,9 +136,14 @@ async function start() {
             port: env_1.env.PORT,
             database: env_1.env.DB_ENABLED ? 'percona' : 'disabled',
             syncIntervalMs: env_1.env.SYNC_INTERVAL_MS,
+            monthlyReportEnabled: env_1.env.MONTHLY_REPORT_ENABLED,
+            emailConfigured: (0, emailClient_1.isEmailConfigured)(),
+            smtpHost: env_1.env.SMTP_HOST || null,
+            smtpProxy: env_1.env.SMTP_PROXY || null,
         }));
     });
     await startScheduledSync();
+    await startMonthlyReportScheduler();
 }
 start().catch((error) => {
     console.error(JSON.stringify({ event: 'server_start_failed', error: error instanceof Error ? error.message : 'unknown' }));

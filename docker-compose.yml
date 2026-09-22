@@ -41,6 +41,12 @@ services:
       REDIS_PASSWORD: ""
       CACHE_TTL_MS: ${CACHE_TTL_MS:-60000}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://frontend-app:3000}
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      NO_PROXY: "*"
+      no_proxy: "*"
     extra_hosts:
       - "tinyproxy:host-gateway"
       - "host.containers.internal:host-gateway"
@@ -76,6 +82,12 @@ services:
       NEXT_PUBLIC_BACKEND_API_URL: ${NEXT_PUBLIC_BACKEND_API_URL:-http://backend-api:5000/api/v1}
       NODE_ENV: development
       PORT: 3000
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      NO_PROXY: "*"
+      no_proxy: "*"
     ports:
       - "3000:3000"
     networks:

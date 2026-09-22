@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { env } from './config/env';
-import { jiraDiagnostics } from './services/jiraClient';
+import { jiraClient, jiraDiagnostics } from './services/jiraClient';
 import { emailDiagnostics, isEmailConfigured } from './services/emailClient';
 import { getMetricsHandler } from './controllers/metricsController';
 import { getIssuesHandler } from './controllers/issuesController';
@@ -39,16 +39,30 @@ const syncLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-app.get('/api/v1/health', async (_req, res) => {
+app.get('/api/v1/health', async (req, res) => {
   const database = await checkDatabase();
-  res.json({
+  const payload: Record<string, unknown> = {
     status: 'ok',
     service: 'backend-api',
     timestamp: new Date().toISOString(),
     jira: jiraDiagnostics,
     email: emailDiagnostics(),
     database,
-  });
+  };
+  // Optional live Jira probe — keep default /health fast for Compose healthchecks.
+  if (req.query.jira === '1' || req.query.jira === 'true') {
+    try {
+      const started = Date.now();
+      await jiraClient.getIssueStatuses();
+      payload.jiraReachable = { ok: true, ms: Date.now() - started };
+    } catch (error) {
+      payload.jiraReachable = {
+        ok: false,
+        detail: error instanceof Error ? error.message : 'unknown',
+      };
+    }
+  }
+  res.json(payload);
 });
 
 app.use('/api/v1', healthRouter);

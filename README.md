@@ -98,6 +98,8 @@ SYNC_API_TOKEN="pick-a-long-secret"
 
 If your working host curl uses `--ssl-reqd`, set `SMTP_REQUIRE_TLS="true"`.
 
+Do **not** put `HTTP_PROXY` / `HTTPS_PROXY` in `.env.local` for tinyproxy — that breaks both Jira (Axios) and the Next.js BFF (`/api/jira`). Use `SMTP_PROXY` only for mail.
+
 **Deploy (recommended):**
 
 ```bash

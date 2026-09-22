@@ -125,7 +125,7 @@ export function DashboardLayout() {
         const response = await fetch(`/api/jira?${toQuery(filters)}`, { signal: controller.signal, cache: 'no-store' });
         const payload = await response.json();
         if (controller.signal.aborted) return;
-        if (!response.ok) throw new Error(payload.detail || payload.details || 'Failed to load dashboard data.');
+        if (!response.ok) throw new Error(payload.detail || payload.details || payload.error || 'Failed to load dashboard data.');
         setData(payload as DashboardPayload);
       } catch (requestError) {
         if (requestError instanceof Error && requestError.name !== 'AbortError') setError(requestError.message);

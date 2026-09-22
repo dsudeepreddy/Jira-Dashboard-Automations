@@ -39,16 +39,31 @@ const syncLimiter = (0, express_rate_limit_1.rateLimit)({
     standardHeaders: true,
     legacyHeaders: false,
 });
-app.get('/api/v1/health', async (_req, res) => {
+app.get('/api/v1/health', async (req, res) => {
     const database = await (0, database_1.checkDatabase)();
-    res.json({
+    const payload = {
         status: 'ok',
         service: 'backend-api',
         timestamp: new Date().toISOString(),
         jira: jiraClient_1.jiraDiagnostics,
         email: (0, emailClient_1.emailDiagnostics)(),
         database,
-    });
+    };
+    // Optional live Jira probe — keep default /health fast for Compose healthchecks.
+    if (req.query.jira === '1' || req.query.jira === 'true') {
+        try {
+            const started = Date.now();
+            await jiraClient_1.jiraClient.getIssueStatuses();
+            payload.jiraReachable = { ok: true, ms: Date.now() - started };
+        }
+        catch (error) {
+            payload.jiraReachable = {
+                ok: false,
+                detail: error instanceof Error ? error.message : 'unknown',
+            };
+        }
+    }
+    res.json(payload);
 });
 app.use('/api/v1', health_1.default);
 app.get('/api/v1/metrics', auth_1.requireDashboardToken, metricsController_1.getMetricsHandler);

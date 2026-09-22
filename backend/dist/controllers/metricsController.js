@@ -34,13 +34,41 @@ function asIso(value) {
     const date = value instanceof Date ? value : new Date(String(value));
     return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
+/** Soft-timeout helper so optional catalog calls cannot stall /metrics. */
+function soft(promise, fallback, ms = 12_000) {
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(fallback), ms);
+        promise.then((value) => {
+            clearTimeout(timer);
+            resolve(value);
+        }, () => {
+            clearTimeout(timer);
+            resolve(fallback);
+        });
+    });
+}
 async function getMetricsHandler(req, res, next) {
     try {
         const parsed = filtersSchema.parse(req.query);
         const dbEnabled = (0, database_1.isDatabaseEnabled)();
         const { label: _label, licenseBu: _licenseBu, auditType: _auditType, application: _application, ...scopeForCatalog } = parsed;
-        const [projects, agileSprints, issueTypes, statuses, searchResult, storedEpics, syncState] = dbEnabled
-            ? await Promise.all([
+        let projects;
+        let agileSprints;
+        let issueTypes;
+        let statuses;
+        let searchResult;
+        let storedEpics;
+        let syncState;
+        if (dbEnabled) {
+            [
+                projects,
+                agileSprints,
+                issueTypes,
+                statuses,
+                searchResult,
+                storedEpics,
+                syncState,
+            ] = await Promise.all([
                 (0, jiraRepository_1.getStoredProjects)(),
                 (0, jiraRepository_1.getStoredSprints)(),
                 (0, jiraRepository_1.getStoredIssueTypes)(),
@@ -48,16 +76,26 @@ async function getMetricsHandler(req, res, next) {
                 (0, jiraRepository_1.getStoredSnapshot)(scopeForCatalog).then((issues) => ({ issues, sprints: [] })),
                 (0, jiraRepository_1.getStoredEpics)(),
                 (0, jiraRepository_1.getSyncState)(),
-            ])
-            : await Promise.all([
-                jiraClient_1.jiraClient.getProjects(),
-                jiraClient_1.jiraClient.getSprints().catch(() => []),
-                jiraClient_1.jiraClient.getIssueTypes(),
-                jiraClient_1.jiraClient.getIssueStatuses(),
-                jiraClient_1.jiraClient.searchIssues(scopeForCatalog),
-                jiraClient_1.jiraClient.getEpics(parsed.projectKey).catch(() => []),
-                Promise.resolve(null),
             ]);
+        }
+        else {
+            // Search is required. Catalogs are soft-timed so SMTP/proxy/Agile issues cannot sink the dashboard.
+            const [projectsResult, sprintsResult, typesResult, statusesResult, searchOutcome, epicsResult] = await Promise.all([
+                soft(jiraClient_1.jiraClient.getProjects(), []),
+                soft(jiraClient_1.jiraClient.getSprints(), []),
+                soft(jiraClient_1.jiraClient.getIssueTypes(), []),
+                soft(jiraClient_1.jiraClient.getIssueStatuses(), []),
+                jiraClient_1.jiraClient.searchIssues(scopeForCatalog),
+                soft(jiraClient_1.jiraClient.getEpics(parsed.projectKey), []),
+            ]);
+            projects = projectsResult;
+            agileSprints = sprintsResult;
+            issueTypes = typesResult;
+            statuses = statusesResult;
+            searchResult = searchOutcome;
+            storedEpics = epicsResult;
+            syncState = null;
+        }
         const issues = searchResult.issues;
         const sprints = [...new Map([...agileSprints, ...searchResult.sprints].map((sprint) => [sprint.id, sprint])).values()];
         if (dbEnabled && !syncState?.last_success_at) {

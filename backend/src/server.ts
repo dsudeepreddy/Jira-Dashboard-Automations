@@ -130,6 +130,18 @@ async function startMonthlyReportScheduler() {
 
 async function start() {
   await initializeDatabase();
+  const systemProxySet = Boolean(
+    process.env.HTTP_PROXY
+    || process.env.http_proxy
+    || process.env.HTTPS_PROXY
+    || process.env.https_proxy,
+  );
+  if (systemProxySet && !env.JIRA_HTTP_PROXY) {
+    console.warn(JSON.stringify({
+      event: 'jira_proxy_isolation',
+      detail: 'HTTP_PROXY/HTTPS_PROXY is set but Jira uses direct connections (proxy:false). SMTP still uses SMTP_PROXY only. Set JIRA_HTTP_PROXY if Atlassian must go through a proxy.',
+    }));
+  }
   app.listen(env.PORT, () => {
     console.log(JSON.stringify({
       event: 'server_started',
@@ -139,8 +151,15 @@ async function start() {
       syncIntervalMs: env.SYNC_INTERVAL_MS,
       monthlyReportEnabled: env.MONTHLY_REPORT_ENABLED,
       emailConfigured: isEmailConfigured(),
-      smtpHost: env.SMTP_HOST || null,
-      smtpProxy: env.SMTP_PROXY || null,
+      smtpHostSet: Boolean(env.SMTP_HOST),
+      smtpPort: env.SMTP_PORT,
+      smtpProxySet: Boolean(env.SMTP_PROXY),
+      smtpFromSet: Boolean(env.SMTP_FROM),
+      monthlyReportToSet: Boolean(env.MONTHLY_REPORT_TO),
+      jiraDomainSet: Boolean(env.JIRA_DOMAIN && !env.JIRA_DOMAIN.includes('yourcompany')),
+      jiraProjectKey: env.JIRA_PROJECT_KEY || null,
+      jiraHttpProxySet: Boolean(env.JIRA_HTTP_PROXY),
+      systemHttpProxySet: systemProxySet,
     }));
   });
   await startScheduledSync();

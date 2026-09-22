@@ -130,7 +130,7 @@ podman-compose -f podman-compose.yml up -d --build
 
 UI: `http://localhost:3000` · API: `http://localhost:5001/api/v1/health`
 
-`podman-compose` maps hostname `tinyproxy` → host gateway so the backend container can use the VM’s tinyproxy. Compose loads `.env.local`. Do not commit that file.
+`podman-compose` maps hostname `tinyproxy` → host gateway so the backend container can use the VM’s tinyproxy for **SMTP only** (`SMTP_PROXY`). Do **not** set `HTTP_PROXY`/`HTTPS_PROXY` to tinyproxy — that used to hijack Jira HTTPS via Axios and break dashboards. Leave `JIRA_HTTP_PROXY` empty unless Atlassian itself must go through a proxy. Compose loads `.env.local`. Do not commit that file.
 
 **Send mail immediately:**
 

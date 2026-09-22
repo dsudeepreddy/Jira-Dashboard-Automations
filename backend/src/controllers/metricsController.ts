@@ -45,6 +45,23 @@ function asIso(value: unknown) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+/** Soft-timeout helper so optional catalog calls cannot stall /metrics. */
+function soft<T>(promise: Promise<T>, fallback: T, ms = 12_000): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
+}
+
 export async function getMetricsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const parsed = filtersSchema.parse(req.query);
@@ -57,25 +74,51 @@ export async function getMetricsHandler(req: Request, res: Response, next: NextF
       ...scopeForCatalog
     } = parsed;
 
-    const [projects, agileSprints, issueTypes, statuses, searchResult, storedEpics, syncState] = dbEnabled
-      ? await Promise.all([
-          getStoredProjects(),
-          getStoredSprints(),
-          getStoredIssueTypes(),
-          getStoredStatuses(),
-          getStoredSnapshot(scopeForCatalog).then((issues) => ({ issues, sprints: [] as AnalyticsSprint[] })),
-          getStoredEpics(),
-          getSyncState(),
-        ])
-      : await Promise.all([
-          jiraClient.getProjects(),
-          jiraClient.getSprints().catch(() => []),
-          jiraClient.getIssueTypes(),
-          jiraClient.getIssueStatuses(),
-          jiraClient.searchIssues(scopeForCatalog),
-          jiraClient.getEpics(parsed.projectKey).catch(() => []),
-          Promise.resolve(null),
-        ]);
+    let projects: Awaited<ReturnType<typeof jiraClient.getProjects>>;
+    let agileSprints: Awaited<ReturnType<typeof jiraClient.getSprints>>;
+    let issueTypes: Awaited<ReturnType<typeof jiraClient.getIssueTypes>>;
+    let statuses: Awaited<ReturnType<typeof jiraClient.getIssueStatuses>>;
+    let searchResult: { issues: Awaited<ReturnType<typeof jiraClient.searchIssues>>['issues']; sprints: AnalyticsSprint[] };
+    let storedEpics: Array<{ key: string; name: string }>;
+    let syncState: Awaited<ReturnType<typeof getSyncState>> | null;
+
+    if (dbEnabled) {
+      [
+        projects,
+        agileSprints,
+        issueTypes,
+        statuses,
+        searchResult,
+        storedEpics,
+        syncState,
+      ] = await Promise.all([
+        getStoredProjects(),
+        getStoredSprints(),
+        getStoredIssueTypes(),
+        getStoredStatuses(),
+        getStoredSnapshot(scopeForCatalog).then((issues) => ({ issues, sprints: [] as AnalyticsSprint[] })),
+        getStoredEpics(),
+        getSyncState(),
+      ]);
+    } else {
+      // Search is required. Catalogs are soft-timed so SMTP/proxy/Agile issues cannot sink the dashboard.
+      const [projectsResult, sprintsResult, typesResult, statusesResult, searchOutcome, epicsResult] = await Promise.all([
+        soft(jiraClient.getProjects(), []),
+        soft(jiraClient.getSprints(), []),
+        soft(jiraClient.getIssueTypes(), []),
+        soft(jiraClient.getIssueStatuses(), []),
+        jiraClient.searchIssues(scopeForCatalog),
+        soft(jiraClient.getEpics(parsed.projectKey), []),
+      ]);
+
+      projects = projectsResult;
+      agileSprints = sprintsResult;
+      issueTypes = typesResult;
+      statuses = statusesResult;
+      searchResult = searchOutcome;
+      storedEpics = epicsResult;
+      syncState = null;
+    }
 
     const issues = searchResult.issues;
     const sprints = [...new Map([...agileSprints, ...searchResult.sprints].map((sprint) => [sprint.id, sprint])).values()];

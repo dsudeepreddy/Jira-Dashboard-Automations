@@ -23,6 +23,36 @@ class JiraClientError extends Error {
     }
 }
 exports.JiraClientError = JiraClientError;
+/** Axios honors HTTP_PROXY/HTTPS_PROXY by default; keep Jira off SMTP tinyproxy unless JIRA_HTTP_PROXY is set. */
+function jiraAxiosProxy() {
+    const raw = env_1.env.JIRA_HTTP_PROXY;
+    if (!raw)
+        return false;
+    try {
+        const url = new URL(raw);
+        return {
+            protocol: url.protocol.replace(':', ''),
+            host: url.hostname,
+            port: Number(url.port || (url.protocol === 'https:' ? 443 : 80)),
+            auth: url.username
+                ? { username: decodeURIComponent(url.username), password: decodeURIComponent(url.password || '') }
+                : undefined,
+        };
+    }
+    catch {
+        throw new JiraClientError(500, 'JIRA_PROXY_CONFIG', `Invalid JIRA_HTTP_PROXY URL: ${raw}`);
+    }
+}
+function isTransientNetworkError(error) {
+    const message = (error.message || '').toLowerCase();
+    return (message.includes('timeout')
+        || message.includes('etimedout')
+        || message.includes('econnreset')
+        || message.includes('econnrefused')
+        || message.includes('enotfound')
+        || message.includes('socket hang up')
+        || message.includes('network'));
+}
 function parseSprints(raw) {
     if (!raw)
         return [];
@@ -193,6 +223,8 @@ class JiraClient {
                 url: path,
                 headers,
                 timeout: 30000,
+                // Critical: do not inherit HTTP_PROXY/HTTPS_PROXY (SMTP tinyproxy breaks Atlassian HTTPS).
+                proxy: options.proxy !== undefined ? options.proxy : jiraAxiosProxy(),
                 validateStatus: (status) => status >= 200 && status < 500,
             });
             if (response.status >= 400) {
@@ -209,7 +241,11 @@ class JiraClient {
             if (error instanceof JiraClientError)
                 throw error;
             const axiosError = error;
-            throw new JiraClientError(axiosError.response?.status ?? 500, 'JIRA_REQUEST_ERROR', axiosError.message || 'Jira request failed', axiosError.response?.data);
+            throw new JiraClientError(axiosError.response?.status ?? 500, 'JIRA_REQUEST_ERROR', axiosError.message || 'Jira request failed', {
+                data: axiosError.response?.data,
+                code: axiosError.code,
+                proxyMode: env_1.env.JIRA_HTTP_PROXY ? 'jira-http-proxy' : 'direct',
+            });
         }
     }
     async withRetry(task) {
@@ -220,11 +256,19 @@ class JiraClient {
             }
             catch (error) {
                 const jiraError = error;
-                const retryable = jiraError.statusCode === 429 || jiraError.statusCode >= 500;
+                // Timeouts / DNS / refused: retry once only (avoids ~120s metrics 500 when network is dead).
+                const network = isTransientNetworkError(jiraError);
+                const retryable = jiraError.statusCode === 429
+                    || (jiraError.statusCode >= 500 && !network)
+                    || (network && attempt < 1);
                 if (!retryable || attempt === 3)
                     throw error;
                 const retryAfter = Number(jiraError.details?.retryAfter);
-                const ms = Number.isFinite(retryAfter) ? retryAfter * 1000 : Math.min(10000, 500 * 2 ** attempt);
+                const ms = Number.isFinite(retryAfter)
+                    ? retryAfter * 1000
+                    : network
+                        ? 500
+                        : Math.min(10000, 500 * 2 ** attempt);
                 await new Promise((resolve) => setTimeout(resolve, ms));
                 attempt += 1;
             }
@@ -613,4 +657,7 @@ exports.jiraDiagnostics = {
     apiToken: env_1.env.JIRA_API_TOKEN ? (0, env_1.maskSecret)(env_1.env.JIRA_API_TOKEN) : 'not-configured',
     oauthToken: env_1.env.JIRA_OAUTH_TOKEN ? (0, env_1.maskSecret)(env_1.env.JIRA_OAUTH_TOKEN) : 'not-configured',
     projectKey: env_1.env.JIRA_PROJECT_KEY || 'not-configured',
+    httpProxy: env_1.env.JIRA_HTTP_PROXY || 'direct (ignores HTTP_PROXY/HTTPS_PROXY)',
+    systemHttpProxySet: Boolean(process.env.HTTP_PROXY || process.env.http_proxy),
+    systemHttpsProxySet: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy),
 };

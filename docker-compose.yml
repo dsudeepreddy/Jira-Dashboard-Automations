@@ -40,6 +40,9 @@ services:
       REDIS_PASSWORD: ""
       CACHE_TTL_MS: ${CACHE_TTL_MS:-60000}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://frontend-app:3000}
+    extra_hosts:
+      - "tinyproxy:host-gateway"
+      - "host.containers.internal:host-gateway"
     ports:
       - "5001:5000"
     healthcheck:

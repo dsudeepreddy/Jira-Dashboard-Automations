@@ -1,5 +1,12 @@
 version: '3.9'
 
+# SRE Audit stack for Podman.
+# Mail/Jira secrets come from env_file (.env.local) — do NOT re-declare them under
+# `environment:` with ${VAR:-} or an empty host shell value will wipe them.
+#
+# Tinyproxy usually runs on the VM host. extra_hosts maps hostname `tinyproxy`
+# to the host gateway so SMTP_PROXY=http://tinyproxy:8888 works inside the container.
+
 services:
   redis-cache:
     image: redis:7-alpine
@@ -16,6 +23,11 @@ services:
       retries: 5
     networks:
       - jira-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend-api:
     build:
@@ -34,7 +46,10 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ""
       CACHE_TTL_MS: ${CACHE_TTL_MS:-60000}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://frontend-app:3000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+    extra_hosts:
+      - "tinyproxy:host-gateway"
+      - "host.containers.internal:host-gateway"
     ports:
       - "5001:5000"
     healthcheck:
@@ -42,9 +57,14 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 40s
     networks:
       - jira-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend-app:
     build:
@@ -65,6 +85,11 @@ services:
       - "3000:3000"
     networks:
       - jira-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   redis_data:

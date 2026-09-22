@@ -81,16 +81,54 @@ If you keep the backend on `5000`, set `BACKEND_API_URL=http://localhost:5000/ap
 
 ## Podman / Compose
 
+Ensure `.env.local` exists at the repo root (mail + Jira). Required mail block for PhonePe-style relay:
+
 ```bash
-podman compose -f podman-compose.yml up --build
+SMTP_HOST="smtp.phonepe.com"
+SMTP_PORT="25"
+SMTP_SECURE="false"
+SMTP_REQUIRE_TLS="false"
+SMTP_FROM="noreply@phonepe.com"
+SMTP_PROXY="http://tinyproxy:8888"
+MONTHLY_REPORT_TO="you@phonepe.com"
+MONTHLY_REPORT_ENABLED="true"
+MONTHLY_REPORT_DAY="1"
+SYNC_API_TOKEN="pick-a-long-secret"
 ```
 
-Frontend is on `http://localhost:3000`, backend on `http://localhost:5001` (container port `5000`). Compose loads `.env.local`. Do not commit that file.
+If your working host curl uses `--ssl-reqd`, set `SMTP_REQUIRE_TLS="true"`.
+
+**Deploy (recommended):**
+
+```bash
+chmod +x scripts/*.sh
+./scripts/deploy-podman.sh
+```
+
+Or manually:
+
+```bash
+podman-compose -f podman-compose.yml down
+podman-compose -f podman-compose.yml build --no-cache backend-api
+podman-compose -f podman-compose.yml up -d --build
+./scripts/verify-deploy.sh
+```
+
+UI: `http://localhost:3000` · API: `http://localhost:5001/api/v1/health`
+
+`podman-compose` maps hostname `tinyproxy` → host gateway so the backend container can use the VM’s tinyproxy. Compose loads `.env.local`. Do not commit that file.
+
+**Send mail immediately:**
+
+```bash
+./scripts/send-monthly-report.sh --smtp-test   # SMTP only (fast)
+./scripts/send-monthly-report.sh              # full previous-month report
+```
 
 After enabling Percona (`DB_ENABLED=true`), wait for health `database.connected: true`, then:
 
 ```bash
-curl -X POST http://localhost:5001/api/v1/sync
+curl -X POST http://localhost:5001/api/v1/sync -H "x-sync-token: $SYNC_API_TOKEN"
 curl http://localhost:3000/api/jira
 ```
 
@@ -99,8 +137,9 @@ curl http://localhost:3000/api/jira
 ## Tests
 
 ```bash
-npm test          # unit tests, no Jira / no stack
-npm run test:api  # with the stack running
+npm test                    # unit tests (analytics, comments, monthly report)
+cd backend && npm run test:smtp && cd ..   # local SMTP + HTTP CONNECT proxy smoke
+npm run test:api            # with the stack running
 ```
 
 ## Environment

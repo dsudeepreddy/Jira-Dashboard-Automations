@@ -62,6 +62,8 @@ const envSchema = zod_1.z.object({
     SMTP_HOST: zod_1.z.string().optional().or(zod_1.z.literal('')),
     SMTP_PORT: zod_1.z.coerce.number().int().positive().default(587),
     SMTP_SECURE: zod_1.z.preprocess((value) => asBool(value, false), zod_1.z.boolean().default(false)),
+    /** Match curl --ssl-reqd (STARTTLS required) when the relay expects TLS on port 25/587. */
+    SMTP_REQUIRE_TLS: zod_1.z.preprocess((value) => asBool(value, false), zod_1.z.boolean().default(false)),
     SMTP_USER: zod_1.z.string().optional().or(zod_1.z.literal('')),
     SMTP_PASS: zod_1.z.string().optional().or(zod_1.z.literal('')),
     SMTP_FROM: zod_1.z.string().optional().or(zod_1.z.literal('')),

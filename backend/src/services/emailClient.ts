@@ -13,6 +13,7 @@ export function emailDiagnostics() {
     host: env.SMTP_HOST || 'not-configured',
     port: env.SMTP_PORT,
     secure: env.SMTP_SECURE,
+    requireTLS: env.SMTP_REQUIRE_TLS,
     from: env.SMTP_FROM || 'not-configured',
     to: env.MONTHLY_REPORT_TO || 'not-configured',
     proxy: env.SMTP_PROXY || 'not-configured',
@@ -106,6 +107,7 @@ export async function sendMail(input: {
     host,
     port,
     secure: env.SMTP_SECURE,
+    requireTLS: env.SMTP_REQUIRE_TLS,
     auth: env.SMTP_USER
       ? { user: env.SMTP_USER, pass: env.SMTP_PASS || '' }
       : undefined,

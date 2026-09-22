@@ -12,7 +12,8 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-RUN addgroup -S app && adduser -S app -G app
+RUN apk add --no-cache wget \
+  && addgroup -S app && adduser -S app -G app
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/db/schema.sql ./dist/db/schema.sql

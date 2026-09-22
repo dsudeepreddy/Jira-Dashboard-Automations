@@ -16,6 +16,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MODE="container"
 DRY_RUN=0
+SMTP_TEST=0
 MONTH=""
 TO=""
 PROJECT=""
@@ -25,11 +26,12 @@ CONTAINER="${BACKEND_CONTAINER:-jira-backend-api}"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/send-monthly-report.sh [--http|--container] [--dry-run] [--month YYYY-MM] [--to email] [--project KEY]
+Usage: scripts/send-monthly-report.sh [--http|--container] [--smtp-test|--dry-run] [--month YYYY-MM] [--to email] [--project KEY]
 
   --container   Run Node CLI inside backend container (default, no auth needed)
   --http        Call POST /api/v1/reports/monthly on the API
-  --dry-run     Build report only; do not send SMTP
+  --smtp-test   Send a tiny SMTP probe only (no Jira). Use this first.
+  --dry-run     Build full monthly report only; do not send SMTP
   --month       Report month (default: previous calendar month)
   --to          Override recipients
   --project     Override project key
@@ -40,6 +42,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --http) MODE="http"; shift ;;
     --container) MODE="container"; shift ;;
+    --smtp-test|--smtpTest) SMTP_TEST=1; shift ;;
     --dry-run|--dryRun) DRY_RUN=1; shift ;;
     --month) MONTH="${2:-}"; shift 2 ;;
     --to) TO="${2:-}"; shift 2 ;;
@@ -51,6 +54,7 @@ done
 
 if [[ "$MODE" == "container" ]]; then
   ARGS=()
+  [[ "$SMTP_TEST" == "1" ]] && ARGS+=(--smtp-test)
   [[ "$DRY_RUN" == "1" ]] && ARGS+=(--dry-run)
   [[ -n "$MONTH" ]] && ARGS+=(--month "$MONTH")
   [[ -n "$TO" ]] && ARGS+=(--to "$TO")

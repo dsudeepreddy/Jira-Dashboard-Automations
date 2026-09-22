@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.loadIssuesForMonthlyReport = loadIssuesForMonthlyReport;
 exports.generateMonthlyReport = generateMonthlyReport;
+exports.sendSmtpTestEmail = sendSmtpTestEmail;
 exports.sendMonthlyReport = sendMonthlyReport;
 const env_1 = require("../config/env");
 const database_1 = require("../db/database");
@@ -16,24 +17,84 @@ function parseRecipients(value) {
         .map((entry) => entry.trim())
         .filter(Boolean);
 }
-async function loadIssuesForMonthlyReport(projectKey) {
+async function loadIssuesForMonthlyReport(options) {
+    const { projectKey, startDate, endDate } = options;
     if ((0, database_1.isDatabaseEnabled)()) {
-        return (0, jiraRepository_1.getStoredSnapshot)({ projectKey, startDate: undefined, endDate: undefined });
+        // Snapshot may be larger than one month; filter in memory via buildMonthlyReport.
+        console.log(JSON.stringify({ event: 'monthly_report_load_db', projectKey: projectKey || null }));
+        return (0, jiraRepository_1.getStoredSnapshot)({ projectKey });
     }
-    const result = await jiraClient_1.jiraClient.searchIssues({ projectKey });
+    console.log(JSON.stringify({
+        event: 'monthly_report_load_jira',
+        projectKey: projectKey || null,
+        startDate,
+        endDate,
+    }));
+    const result = await jiraClient_1.jiraClient.searchIssues({
+        projectKey,
+        activityStartDate: startDate,
+        activityEndDate: endDate,
+        unbounded: true,
+        orderBy: 'updated DESC',
+    });
+    console.log(JSON.stringify({
+        event: 'monthly_report_load_jira_done',
+        issueCount: result.issues.length,
+    }));
     return result.issues;
 }
 async function generateMonthlyReport(options = {}) {
     const window = options.month ? (0, monthlyReport_1.monthWindowFromYm)(options.month) : (0, monthlyReport_1.previousMonthWindow)();
     const projectKey = options.projectKey || env_1.env.MONTHLY_REPORT_PROJECT_KEY || env_1.env.JIRA_PROJECT_KEY || undefined;
-    const issues = await loadIssuesForMonthlyReport(projectKey);
-    // Touch statuses so DB path stays warm; report builder does not need lookup for open/closed month math.
+    const issues = await loadIssuesForMonthlyReport({
+        projectKey,
+        startDate: window.startDate,
+        endDate: window.endDate,
+    });
     if ((0, database_1.isDatabaseEnabled)())
         await (0, jiraRepository_1.getStoredStatuses)().catch(() => []);
     return (0, monthlyReport_1.buildMonthlyReport)(issues, {
         ...window,
         projectKey,
     });
+}
+/** Tiny SMTP-only probe — does not call Jira. */
+async function sendSmtpTestEmail(options = {}) {
+    if (!(0, emailClient_1.isEmailConfigured)() && !options.to) {
+        throw Object.assign(new Error('Set SMTP_HOST, SMTP_FROM, MONTHLY_REPORT_TO (or pass --to).'), {
+            statusCode: 503,
+            code: 'EMAIL_NOT_CONFIGURED',
+        });
+    }
+    const recipients = parseRecipients(options.to || env_1.env.MONTHLY_REPORT_TO);
+    if (!recipients.length) {
+        throw Object.assign(new Error('No recipients. Pass --to or set MONTHLY_REPORT_TO.'), {
+            statusCode: 400,
+            code: 'NO_RECIPIENTS',
+        });
+    }
+    const subject = `SRE Audit SMTP test — ${new Date().toISOString()}`;
+    const text = [
+        'This is a connectivity test from the Jira Dashboard backend.',
+        `Host: ${env_1.env.SMTP_HOST}:${env_1.env.SMTP_PORT}`,
+        `Proxy: ${env_1.env.SMTP_PROXY || '(none)'}`,
+        `From: ${env_1.env.SMTP_FROM}`,
+        `To: ${recipients.join(', ')}`,
+    ].join('\n');
+    const html = `<pre style="font-family:ui-monospace,monospace">${text.replace(/</g, '&lt;')}</pre>`;
+    const sent = await (0, emailClient_1.sendMail)({
+        to: recipients,
+        subject,
+        text,
+        html,
+    });
+    return {
+        subject,
+        recipients,
+        messageId: sent.messageId,
+        accepted: sent.accepted,
+        email: (0, emailClient_1.emailDiagnostics)(),
+    };
 }
 async function sendMonthlyReport(options = {}) {
     const started = Date.now();

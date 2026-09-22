@@ -18,11 +18,34 @@ function parseRecipients(value?: string): string[] {
     .filter(Boolean);
 }
 
-export async function loadIssuesForMonthlyReport(projectKey?: string) {
+export async function loadIssuesForMonthlyReport(options: {
+  projectKey?: string;
+  startDate: string;
+  endDate: string;
+}) {
+  const { projectKey, startDate, endDate } = options;
   if (isDatabaseEnabled()) {
-    return getStoredSnapshot({ projectKey, startDate: undefined, endDate: undefined });
+    // Snapshot may be larger than one month; filter in memory via buildMonthlyReport.
+    console.log(JSON.stringify({ event: 'monthly_report_load_db', projectKey: projectKey || null }));
+    return getStoredSnapshot({ projectKey });
   }
-  const result = await jiraClient.searchIssues({ projectKey });
+  console.log(JSON.stringify({
+    event: 'monthly_report_load_jira',
+    projectKey: projectKey || null,
+    startDate,
+    endDate,
+  }));
+  const result = await jiraClient.searchIssues({
+    projectKey,
+    activityStartDate: startDate,
+    activityEndDate: endDate,
+    unbounded: true,
+    orderBy: 'updated DESC',
+  });
+  console.log(JSON.stringify({
+    event: 'monthly_report_load_jira_done',
+    issueCount: result.issues.length,
+  }));
   return result.issues;
 }
 
@@ -32,13 +55,56 @@ export async function generateMonthlyReport(options: {
 } = {}): Promise<MonthlyReport> {
   const window = options.month ? monthWindowFromYm(options.month) : previousMonthWindow();
   const projectKey = options.projectKey || env.MONTHLY_REPORT_PROJECT_KEY || env.JIRA_PROJECT_KEY || undefined;
-  const issues = await loadIssuesForMonthlyReport(projectKey);
-  // Touch statuses so DB path stays warm; report builder does not need lookup for open/closed month math.
+  const issues = await loadIssuesForMonthlyReport({
+    projectKey,
+    startDate: window.startDate,
+    endDate: window.endDate,
+  });
   if (isDatabaseEnabled()) await getStoredStatuses().catch(() => []);
   return buildMonthlyReport(issues, {
     ...window,
     projectKey,
   });
+}
+
+/** Tiny SMTP-only probe — does not call Jira. */
+export async function sendSmtpTestEmail(options: { to?: string } = {}) {
+  if (!isEmailConfigured() && !options.to) {
+    throw Object.assign(new Error('Set SMTP_HOST, SMTP_FROM, MONTHLY_REPORT_TO (or pass --to).'), {
+      statusCode: 503,
+      code: 'EMAIL_NOT_CONFIGURED',
+    });
+  }
+  const recipients = parseRecipients(options.to || env.MONTHLY_REPORT_TO);
+  if (!recipients.length) {
+    throw Object.assign(new Error('No recipients. Pass --to or set MONTHLY_REPORT_TO.'), {
+      statusCode: 400,
+      code: 'NO_RECIPIENTS',
+    });
+  }
+  const subject = `SRE Audit SMTP test — ${new Date().toISOString()}`;
+  const text = [
+    'This is a connectivity test from the Jira Dashboard backend.',
+    `Host: ${env.SMTP_HOST}:${env.SMTP_PORT}`,
+    `Proxy: ${env.SMTP_PROXY || '(none)'}`,
+    `From: ${env.SMTP_FROM}`,
+    `To: ${recipients.join(', ')}`,
+  ].join('\n');
+  const html = `<pre style="font-family:ui-monospace,monospace">${text.replace(/</g, '&lt;')}</pre>`;
+
+  const sent = await sendMail({
+    to: recipients,
+    subject,
+    text,
+    html,
+  });
+  return {
+    subject,
+    recipients,
+    messageId: sent.messageId,
+    accepted: sent.accepted,
+    email: emailDiagnostics(),
+  };
 }
 
 export async function sendMonthlyReport(options: {

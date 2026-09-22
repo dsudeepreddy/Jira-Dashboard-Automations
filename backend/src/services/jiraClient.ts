@@ -6,6 +6,7 @@ import {
   createdDateJql,
   deriveAuditSlaTimestamps,
   deriveFlowTimestamps,
+  shiftIsoDate,
   type AnalyticsIssue,
   type AnalyticsSprint,
   type ChangelogHistory,
@@ -42,6 +43,9 @@ type SearchFilters = {
   application?: string;
   startDate?: string;
   endDate?: string;
+  /** Inclusive YYYY-MM-DD window for created/resolved/updated activity (monthly reports). */
+  activityStartDate?: string;
+  activityEndDate?: string;
   updatedSince?: string;
   lookbackDays?: number;
   unbounded?: boolean;
@@ -536,15 +540,31 @@ export class JiraClient {
     else if (filters.application) parts.push(`"Application" = "${filters.application.replace(/"/g, '\\"')}"`);
     const createdRange = createdDateJql(filters.startDate, filters.endDate);
     if (createdRange) parts.push(`(${createdRange})`);
+    if (filters.activityStartDate && filters.activityEndDate) {
+      const start = filters.activityStartDate;
+      const endExclusive = shiftIsoDate(filters.activityEndDate, 1);
+      parts.push(
+        `((created >= "${start}" AND created < "${endExclusive}")`
+        + ` OR (resolved >= "${start}" AND resolved < "${endExclusive}")`
+        + ` OR (updated >= "${start}" AND updated < "${endExclusive}"))`,
+      );
+    }
     if (filters.updatedSince) {
       parts.push(`updated >= "${toJqlDate(filters.updatedSince)}"`);
-    } else if (!filters.unbounded && !filters.epicKey && !filters.startDate && !filters.endDate) {
+    } else if (
+      !filters.unbounded
+      && !filters.epicKey
+      && !filters.startDate
+      && !filters.endDate
+      && !filters.activityStartDate
+    ) {
       parts.push(`updated >= -${filters.lookbackDays || env.JIRA_LOOKBACK_DAYS}d`);
     }
 
     const allowedOrder = new Set(['updated ASC', 'updated DESC', 'created ASC', 'created DESC', 'key ASC', 'key DESC']);
     const orderBy = filters.orderBy && allowedOrder.has(filters.orderBy) ? filters.orderBy : 'updated ASC';
     const jql = `${parts.join(' AND ')} ORDER BY ${orderBy}`;
+    console.log(JSON.stringify({ event: 'jira_search_start', jql, maxIssues: env.JIRA_MAX_ISSUES }));
     const issues: JiraIssue[] = [];
     const discoveredSprints = new Map<number, AnalyticsSprint>();
     let nextPageToken: string | undefined;

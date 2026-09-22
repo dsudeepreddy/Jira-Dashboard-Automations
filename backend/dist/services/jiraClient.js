@@ -462,15 +462,27 @@ class JiraClient {
         const createdRange = (0, analytics_1.createdDateJql)(filters.startDate, filters.endDate);
         if (createdRange)
             parts.push(`(${createdRange})`);
+        if (filters.activityStartDate && filters.activityEndDate) {
+            const start = filters.activityStartDate;
+            const endExclusive = (0, analytics_1.shiftIsoDate)(filters.activityEndDate, 1);
+            parts.push(`((created >= "${start}" AND created < "${endExclusive}")`
+                + ` OR (resolved >= "${start}" AND resolved < "${endExclusive}")`
+                + ` OR (updated >= "${start}" AND updated < "${endExclusive}"))`);
+        }
         if (filters.updatedSince) {
             parts.push(`updated >= "${toJqlDate(filters.updatedSince)}"`);
         }
-        else if (!filters.unbounded && !filters.epicKey && !filters.startDate && !filters.endDate) {
+        else if (!filters.unbounded
+            && !filters.epicKey
+            && !filters.startDate
+            && !filters.endDate
+            && !filters.activityStartDate) {
             parts.push(`updated >= -${filters.lookbackDays || env_1.env.JIRA_LOOKBACK_DAYS}d`);
         }
         const allowedOrder = new Set(['updated ASC', 'updated DESC', 'created ASC', 'created DESC', 'key ASC', 'key DESC']);
         const orderBy = filters.orderBy && allowedOrder.has(filters.orderBy) ? filters.orderBy : 'updated ASC';
         const jql = `${parts.join(' AND ')} ORDER BY ${orderBy}`;
+        console.log(JSON.stringify({ event: 'jira_search_start', jql, maxIssues: env_1.env.JIRA_MAX_ISSUES }));
         const issues = [];
         const discoveredSprints = new Map();
         let nextPageToken;

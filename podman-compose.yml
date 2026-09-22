@@ -92,8 +92,11 @@ services:
     env_file:
       - .env.local
     environment:
+      # Force service DNS even if .env.local has localhost/127.0.0.1 (podman env_file can win).
+      IN_COMPOSE: "1"
+      COMPOSE_BACKEND_URL: http://backend-api:5000/api/v1
       BACKEND_API_URL: http://backend-api:5000/api/v1
-      NEXT_PUBLIC_BACKEND_API_URL: ${NEXT_PUBLIC_BACKEND_API_URL:-http://backend-api:5000/api/v1}
+      NEXT_PUBLIC_BACKEND_API_URL: http://backend-api:5000/api/v1
       NODE_ENV: production
       PORT: 3000
       # Critical: env_file may set HTTP_PROXY=tinyproxy for SMTP docs; that breaks
@@ -104,6 +107,17 @@ services:
       https_proxy: ""
       NO_PROXY: "*"
       no_proxy: "*"
+    # Belt-and-suspenders: force API URL at process start (podman-compose env_file quirks).
+    command:
+      - /bin/sh
+      - -c
+      - >
+        export IN_COMPOSE=1
+        BACKEND_API_URL=http://backend-api:5000/api/v1
+        COMPOSE_BACKEND_URL=http://backend-api:5000/api/v1
+        HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy=
+        NO_PROXY=* no_proxy=*
+        && exec npm run start
     ports:
       - "3000:3000"
     networks:

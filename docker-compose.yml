@@ -78,8 +78,10 @@ services:
     env_file:
       - .env.local
     environment:
+      IN_COMPOSE: "1"
+      COMPOSE_BACKEND_URL: http://backend-api:5000/api/v1
       BACKEND_API_URL: http://backend-api:5000/api/v1
-      NEXT_PUBLIC_BACKEND_API_URL: ${NEXT_PUBLIC_BACKEND_API_URL:-http://backend-api:5000/api/v1}
+      NEXT_PUBLIC_BACKEND_API_URL: http://backend-api:5000/api/v1
       NODE_ENV: development
       PORT: 3000
       HTTP_PROXY: ""
@@ -88,6 +90,16 @@ services:
       https_proxy: ""
       NO_PROXY: "*"
       no_proxy: "*"
+    command:
+      - /bin/sh
+      - -c
+      - >
+        export IN_COMPOSE=1
+        BACKEND_API_URL=http://backend-api:5000/api/v1
+        COMPOSE_BACKEND_URL=http://backend-api:5000/api/v1
+        HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy=
+        NO_PROXY=* no_proxy=*
+        && exec npm run start
     ports:
       - "3000:3000"
     networks:

@@ -87,6 +87,9 @@ echo "==> Recreating stack from prebuilt images (--no-build)"
 "${COMPOSE[@]}" down || true
 "${COMPOSE[@]}" up -d --no-build
 
+echo "==> Frontend BACKEND_API_URL (must be backend-api, not 127.0.0.1)"
+podman exec jira-frontend-app sh -c 'echo BACKEND_API_URL=$BACKEND_API_URL IN_COMPOSE=$IN_COMPOSE' 2>/dev/null || true
+
 echo "==> Waiting for backend health"
 for i in $(seq 1 40); do
   if curl -fsS --max-time 3 http://localhost:5001/api/v1/health >/dev/null 2>&1; then

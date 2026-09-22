@@ -110,7 +110,7 @@ chmod +x scripts/*.sh
 ```bash
 # on laptop
 chmod +x scripts/*.sh
-./scripts/build-and-scp.sh --with-redis root@stg-sreaudit010:/root/Jira-Dashboard-Automations
+./scripts/build-and-scp.sh -i ~/.ssh/your-vm.pem root@stg-sreaudit010:/root/Jira-Dashboard-Automations
 
 # on VM
 cd /root/Jira-Dashboard-Automations

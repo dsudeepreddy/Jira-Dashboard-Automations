@@ -2,10 +2,11 @@
 # Build npm/shared + Podman images on your laptop, save tarballs, SCP to the VM.
 #
 # Usage:
-#   ./scripts/build-and-scp.sh user@stg-sreaudit010:/root/Jira-Dashboard-Automations
-#   ./scripts/build-and-scp.sh --with-redis user@host:/opt/jira-dashboard
-#   VM_TARGET=user@host:/path ./scripts/build-and-scp.sh
+#   ./scripts/build-and-scp.sh -i ~/.ssh/vm.pem user@stg-host:/root/Jira-Dashboard-Automations
+#   ./scripts/build-and-scp.sh --identity /path/to/key user@host:/path
+#   VM_SSH_KEY=~/.ssh/vm.pem VM_TARGET=user@host:/path ./scripts/build-and-scp.sh
 #
+# Redis is expected to already exist on the VM.
 # On the VM afterwards:
 #   cd /path && ./scripts/load-and-deploy-vm.sh
 set -euo pipefail
@@ -13,12 +14,19 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-WITH_REDIS=0
 TARGET="${VM_TARGET:-}"
+IDENTITY="${VM_SSH_KEY:-${SSH_IDENTITY:-}}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --with-redis) WITH_REDIS=1; shift ;;
+    -i|--identity|--key)
+      IDENTITY="${2:-}"
+      if [[ -z "$IDENTITY" ]]; then
+        echo "Missing path after $1"
+        exit 1
+      fi
+      shift 2
+      ;;
     -h|--help)
       sed -n '2,14p' "$0"
       exit 0
@@ -31,7 +39,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$TARGET" ]]; then
-  echo "Usage: $0 [--with-redis] user@vm:/remote/path/to/Jira-Dashboard-Automations"
+  echo "Usage: $0 [-i /path/to/vm.key] user@vm:/remote/path/to/Jira-Dashboard-Automations"
   exit 1
 fi
 
@@ -42,6 +50,23 @@ if [[ "$REMOTE_HOST" == "$REMOTE_SPEC" || -z "$REMOTE_PATH" ]]; then
   echo "Target must look like user@host:/absolute/or/relative/path"
   exit 1
 fi
+
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new)
+SCP_OPTS=(-o StrictHostKeyChecking=accept-new)
+if [[ -n "$IDENTITY" ]]; then
+  if [[ ! -f "$IDENTITY" ]]; then
+    echo "SSH key not found: $IDENTITY"
+    exit 1
+  fi
+  # OpenSSH refuses keys that are group/world-readable.
+  chmod 600 "$IDENTITY" 2>/dev/null || true
+  SSH_OPTS+=(-i "$IDENTITY")
+  SCP_OPTS+=(-i "$IDENTITY")
+  echo "==> Using SSH key: $IDENTITY"
+fi
+
+ssh_vm() { ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" "$@"; }
+scp_vm() { scp "${SCP_OPTS[@]}" "$@"; }
 
 ENGINE="${CONTAINER_ENGINE:-}"
 if [[ -z "$ENGINE" ]]; then
@@ -55,7 +80,6 @@ fi
 
 BACKEND_IMAGE="${BACKEND_IMAGE:-localhost/jira-dashboard-backend:latest}"
 FRONTEND_IMAGE="${FRONTEND_IMAGE:-localhost/jira-dashboard-frontend:latest}"
-REDIS_IMAGE="${REDIS_IMAGE:-docker.io/library/redis:7-alpine}"
 TAG="${IMAGE_TAG:-$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
 OUT_DIR="${ROOT_DIR}/build/images"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -81,12 +105,6 @@ $ENGINE tag "$FRONTEND_IMAGE" "localhost/jira-dashboard-frontend:${TAG}"
 echo "==> Saving image tarballs to $BUNDLE_DIR"
 $ENGINE save -o "${BUNDLE_DIR}/jira-dashboard-backend.tar" "$BACKEND_IMAGE"
 $ENGINE save -o "${BUNDLE_DIR}/jira-dashboard-frontend.tar" "$FRONTEND_IMAGE"
-
-if [[ "$WITH_REDIS" == "1" ]]; then
-  echo "==> Pulling + saving redis (for air-gapped VMs)"
-  $ENGINE pull "$REDIS_IMAGE"
-  $ENGINE save -o "${BUNDLE_DIR}/redis-7-alpine.tar" "$REDIS_IMAGE"
-fi
 
 echo "==> Packing deploy overlay (compose + scripts, no secrets)"
 OVERLAY="${BUNDLE_DIR}/deploy-overlay"
@@ -114,27 +132,33 @@ echo "==> Creating ${ARCHIVE}"
 tar -C "$BUNDLE_DIR" -czf "$ARCHIVE" .
 
 echo "==> Ensuring remote directory ${REMOTE_PATH}"
-ssh "$REMOTE_HOST" "mkdir -p '${REMOTE_PATH}/build/images' '${REMOTE_PATH}/scripts'"
+ssh_vm "mkdir -p '${REMOTE_PATH}/build/images' '${REMOTE_PATH}/scripts'"
 
 echo "==> SCP bundle → ${REMOTE_SPEC}"
-scp "$ARCHIVE" "${REMOTE_HOST}:${REMOTE_PATH}/build/images/"
-scp podman-compose.yml docker-compose.yml "${REMOTE_HOST}:${REMOTE_PATH}/"
-scp scripts/load-and-deploy-vm.sh scripts/verify-deploy.sh scripts/send-monthly-report.sh \
+scp_vm "$ARCHIVE" "${REMOTE_HOST}:${REMOTE_PATH}/build/images/"
+scp_vm podman-compose.yml docker-compose.yml "${REMOTE_HOST}:${REMOTE_PATH}/"
+scp_vm scripts/load-and-deploy-vm.sh scripts/verify-deploy.sh scripts/send-monthly-report.sh \
   scripts/deploy-podman.sh "${REMOTE_HOST}:${REMOTE_PATH}/scripts/"
-ssh "$REMOTE_HOST" "chmod +x '${REMOTE_PATH}/scripts/'*.sh"
+ssh_vm "chmod +x '${REMOTE_PATH}/scripts/'*.sh"
 
-# Optional: push .env.local if present (ask via flag)
+# Optional: push .env.local if present
 if [[ "${SCP_ENV_LOCAL:-0}" == "1" && -f .env.local ]]; then
   echo "==> SCP .env.local (SCP_ENV_LOCAL=1)"
-  scp .env.local "${REMOTE_HOST}:${REMOTE_PATH}/.env.local"
+  scp_vm .env.local "${REMOTE_HOST}:${REMOTE_PATH}/.env.local"
 fi
+
+SSH_HINT=(ssh)
+if [[ -n "$IDENTITY" ]]; then
+  SSH_HINT+=(-i "$IDENTITY")
+fi
+SSH_HINT+=("$REMOTE_HOST")
 
 cat <<EOF
 
 Local build + SCP complete.
 
 On the VM run:
-  ssh ${REMOTE_HOST}
+  ${SSH_HINT[*]}
   cd ${REMOTE_PATH}
   # first time: ensure .env.local exists (copy from .env.example)
   ./scripts/load-and-deploy-vm.sh
@@ -142,6 +166,5 @@ On the VM run:
 Bundle on VM:
   ${REMOTE_PATH}/build/images/$(basename "$ARCHIVE")
 
-Tip: include redis tarball with --with-redis if the VM cannot pull from the internet.
-Tip: SCP_ENV_LOCAL=1 $0 ...  to also copy .env.local
+Tip: SCP_ENV_LOCAL=1 $0 -i /path/to/key user@host:/path  to also copy .env.local
 EOF

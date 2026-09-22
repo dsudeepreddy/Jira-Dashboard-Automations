@@ -75,10 +75,12 @@ if [[ -f "${EXTRACT_DIR}/FRONTEND_IMAGE.txt" ]]; then
   echo "    frontend image ref: $(cat "${EXTRACT_DIR}/FRONTEND_IMAGE.txt")"
 fi
 
-# Pull redis only if not already present / not loaded from bundle
+# Pull redis only if missing (not shipped in the image bundle)
 if ! podman image exists docker.io/library/redis:7-alpine && ! podman image exists redis:7-alpine; then
-  echo "==> redis:7-alpine not loaded; pulling"
+  echo "==> redis:7-alpine not found locally; pulling"
   podman pull docker.io/library/redis:7-alpine || podman pull redis:7-alpine
+else
+  echo "==> Using existing redis image on VM"
 fi
 
 echo "==> Recreating stack from prebuilt images (--no-build)"

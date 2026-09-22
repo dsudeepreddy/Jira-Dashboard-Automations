@@ -1,15 +1,21 @@
 version: '3.9'
 
 # SRE Audit stack for Podman.
-# Mail/Jira secrets come from env_file (.env.local) — do NOT re-declare them under
-# `environment:` with ${VAR:-} or an empty host shell value will wipe them.
 #
-# Tinyproxy usually runs on the VM host. extra_hosts maps hostname `tinyproxy`
-# to the host gateway so SMTP_PROXY=http://tinyproxy:8888 works inside the container.
+# Local laptop workflow (recommended):
+#   ./scripts/build-and-scp.sh user@vm:/path/to/Jira-Dashboard-Automations
+#   # on VM:
+#   ./scripts/load-and-deploy-vm.sh
+#
+# Images are pinned so the VM can `podman load` prebuilt tarballs and start
+# with --no-build (no npm/build tools required on the VM).
+#
+# Mail/Jira secrets come from env_file (.env.local) only.
+# Tinyproxy on the VM host is reached via extra_hosts → host-gateway.
 
 services:
   redis-cache:
-    image: redis:7-alpine
+    image: docker.io/library/redis:7-alpine
     container_name: jira-redis-cache
     command: ["redis-server", "--appendonly", "yes", "--save", "60", "1", "--loglevel", "notice"]
     ports:
@@ -30,6 +36,7 @@ services:
         max-file: "3"
 
   backend-api:
+    image: ${BACKEND_IMAGE:-localhost/jira-dashboard-backend:latest}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -67,6 +74,7 @@ services:
         max-file: "3"
 
   frontend-app:
+    image: ${FRONTEND_IMAGE:-localhost/jira-dashboard-frontend:latest}
     build:
       context: .
       dockerfile: Dockerfile

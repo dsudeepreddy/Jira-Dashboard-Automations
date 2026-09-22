@@ -105,6 +105,20 @@ chmod +x scripts/*.sh
 ./scripts/deploy-podman.sh
 ```
 
+**Build on laptop → SCP images to VM (no build on VM):**
+
+```bash
+# on laptop
+chmod +x scripts/*.sh
+./scripts/build-and-scp.sh --with-redis root@stg-sreaudit010:/root/Jira-Dashboard-Automations
+
+# on VM
+cd /root/Jira-Dashboard-Automations
+# ensure .env.local exists
+./scripts/load-and-deploy-vm.sh
+./scripts/send-monthly-report.sh --smtp-test
+```
+
 Or manually:
 
 ```bash

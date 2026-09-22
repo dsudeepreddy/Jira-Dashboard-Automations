@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   redis-cache:
-    image: redis:7-alpine
+    image: docker.io/library/redis:7-alpine
     container_name: jira-redis-cache
     command: ["redis-server", "--appendonly", "yes", "--save", "60", "1", "--loglevel", "notice"]
     ports:
@@ -23,6 +23,7 @@ services:
         max-file: "3"
 
   backend-api:
+    image: ${BACKEND_IMAGE:-localhost/jira-dashboard-backend:latest}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -60,6 +61,7 @@ services:
         max-file: "3"
 
   frontend-app:
+    image: ${FRONTEND_IMAGE:-localhost/jira-dashboard-frontend:latest}
     build:
       context: .
       dockerfile: Dockerfile

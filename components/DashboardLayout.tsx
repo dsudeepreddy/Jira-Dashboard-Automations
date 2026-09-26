@@ -306,14 +306,14 @@ export function DashboardLayout() {
                 </button>
               </div>
               {isFiltersExpanded && (
-                <div className="flex flex-col gap-2 border-t border-slate-200/70 pt-3 dark:border-white/10 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                <div className="space-y-3 border-t border-slate-200/70 pt-3 dark:border-white/10">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
                     <select
                       aria-label="Project"
                       title={projectOptions.find((project) => project.key === draft.projectKey)?.name || 'All projects'}
                       value={draft.projectKey}
                       onChange={(event) => setDraft({ ...draft, projectKey: event.target.value })}
-                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                      className="control w-full min-w-0"
                     >
                       <option value="">All projects</option>
                       {projectOptions.map((project) => <option key={project.id} value={project.key}>{project.name}</option>)}
@@ -323,7 +323,7 @@ export function DashboardLayout() {
                       title={data?.epics?.find((epic) => epic.key === draft.epicKey)?.name || 'All FY epics'}
                       value={draft.epicKey}
                       onChange={(event) => setDraft({ ...draft, epicKey: event.target.value })}
-                      className="control min-w-0 max-w-[16rem] flex-[1_1_12rem]"
+                      className="control w-full min-w-0"
                     >
                       <option value="">All FY epics</option>
                       {(data?.epics || []).map((epic) => <option key={epic.key} value={epic.key}>{epic.name}</option>)}
@@ -333,7 +333,7 @@ export function DashboardLayout() {
                       title={draft.licenseBu || 'All License/BU'}
                       value={draft.licenseBu}
                       onChange={(event) => setDraft({ ...draft, licenseBu: event.target.value })}
-                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                      className="control w-full min-w-0"
                     >
                       <option value="">All License/BU</option>
                       {(data?.licenseBus || []).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
@@ -343,7 +343,7 @@ export function DashboardLayout() {
                       title={draft.application || 'All applications'}
                       value={draft.application}
                       onChange={(event) => setDraft({ ...draft, application: event.target.value })}
-                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                      className="control w-full min-w-0"
                     >
                       <option value="">All applications</option>
                       {(data?.applications || []).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
@@ -353,7 +353,7 @@ export function DashboardLayout() {
                       title={data?.sprints?.find((sprint) => String(sprint.id) === draft.sprintId)?.name || 'All sprints'}
                       value={draft.sprintId}
                       onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })}
-                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                      className="control w-full min-w-0"
                     >
                       <option value="">All sprints</option>
                       {(data?.sprints || []).map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}
@@ -363,7 +363,7 @@ export function DashboardLayout() {
                       title={draft.issueType || 'All types'}
                       value={draft.issueType}
                       onChange={(event) => setDraft({ ...draft, issueType: event.target.value })}
-                      className="control min-w-0 max-w-[11rem] flex-[1_1_8rem]"
+                      className="control w-full min-w-0"
                     >
                       <option value="">All types</option>
                       {issueTypeOptions.map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}
@@ -373,21 +373,21 @@ export function DashboardLayout() {
                       title={draft.label === UNTAGGED_LABEL ? 'Untagged' : draft.label || 'All tags'}
                       value={draft.label}
                       onChange={(event) => setDraft({ ...draft, label: event.target.value })}
-                      className="control min-w-0 max-w-[14rem] flex-[1_1_11rem]"
+                      className="control w-full min-w-0"
                     >
                       <option value="">All tags</option>
                       <option value={UNTAGGED_LABEL}>Untagged</option>
                       {labelOptions.map((label) => <option key={label.id} value={label.name}>{label.name}</option>)}
                     </select>
                   </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2 lg:flex-nowrap">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                     <input
                       aria-label="Created from"
                       type="date"
                       value={draft.startDate}
                       max={draft.endDate || undefined}
                       onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
-                      className="control w-[10.5rem] shrink-0"
+                      className="control w-full sm:w-[11rem]"
                     />
                     <input
                       aria-label="Created to"
@@ -395,19 +395,21 @@ export function DashboardLayout() {
                       value={draft.endDate}
                       min={draft.startDate || undefined}
                       onChange={(event) => setDraft({ ...draft, endDate: event.target.value })}
-                      className="control w-[10.5rem] shrink-0"
+                      className="control w-full sm:w-[11rem]"
                     />
-                    <button
-                      type="button"
-                      onClick={() => commitFilters(draft)}
-                      disabled={!dirty || invalidRange}
-                      className="shrink-0 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400"
-                    >
-                      {loading && data ? 'Applying…' : 'Apply'}
-                    </button>
-                    <button type="button" onClick={() => commitFilters(EMPTY_FILTERS)} className="control shrink-0 font-medium text-slate-600 dark:text-slate-300">Reset</button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => commitFilters(draft)}
+                        disabled={!dirty || invalidRange}
+                        className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400"
+                      >
+                        {loading && data ? 'Applying…' : 'Apply'}
+                      </button>
+                      <button type="button" onClick={() => commitFilters(EMPTY_FILTERS)} className="control font-medium text-slate-600 dark:text-slate-300">Reset</button>
+                    </div>
                   </div>
-                  {invalidRange ? <p className="basis-full text-xs text-amber-700 dark:text-amber-300">Created from must be on or before Created to.</p> : null}
+                  {invalidRange ? <p className="text-xs text-amber-700 dark:text-amber-300">Created from must be on or before Created to.</p> : null}
                 </div>
               )}
             </div>
@@ -482,12 +484,12 @@ export function DashboardLayout() {
               {secondaryMetrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
             </section>
 
-            <section className="grid gap-5 xl:grid-cols-[0.9fr_1.4fr]">
+            <section className="grid gap-5 xl:grid-cols-2 xl:items-stretch">
               <StatusDistributionChart data={data.metrics.statusBreakdown} />
               <ThroughputTrendChart data={data.metrics.createdVsResolved} />
             </section>
 
-            <section className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
+            <section className="grid gap-5 xl:grid-cols-2 xl:items-stretch">
               <AssigneeLoadChart data={data.metrics.assigneeLoad} />
               <WipAgingChart data={data.metrics.wipAging} />
             </section>
@@ -505,9 +507,9 @@ export function DashboardLayout() {
               auditTypeOptions={data.auditTypes}
             />
 
-            <section className="grid gap-5 xl:grid-cols-2">
+            <section className="grid gap-5 xl:grid-cols-2 xl:items-stretch">
               <VelocityChart data={data.metrics.velocityTrend} basis={data.metrics.velocityBasis} />
-              <GlassCard className="p-5">
+              <GlassCard className="h-full p-5">
                 <div className="mb-5 flex items-center justify-between">
                   <div>
                     <p className="eyebrow">Time in status</p>
@@ -545,6 +547,7 @@ export function DashboardLayout() {
                   <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                     Per page
                     <select value={issuePageSize} onChange={(event) => setIssuePageSize(Number(event.target.value))} className="control py-1.5">
+                      <option value={10}>10</option>
                       <option value={25}>25</option>
                       <option value={50}>50</option>
                       <option value={100}>100</option>

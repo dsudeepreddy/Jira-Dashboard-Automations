@@ -698,7 +698,8 @@ function matchesFilters(issue: AnalyticsIssue, filters: DashboardFilters): boole
 
 function completionDate(issue: AnalyticsIssue, statusLookup?: Map<string, string>): Date | null {
   return toSafeDate(issue.resolved)
-    || (isDoneIssue(issue, statusLookup) ? toSafeDate(issue.lastStatusChangedAt) : null);
+    || toSafeDate(issue.doneAt)
+    || (isDoneIssue(issue, statusLookup) ? toSafeDate(issue.lastStatusChangedAt) || toSafeDate(issue.updated) : null);
 }
 
 function issueCategory(issue: AnalyticsIssue, statusLookup?: Map<string, string>): StatusCategory {
@@ -747,9 +748,9 @@ export function aggregateDashboardMetrics(
       entry.created += 1;
       byMonth.set(key, entry);
     }
-    const resolved = toSafeDate(issue.resolved);
-    if (resolved) {
-      const key = monthSortKey(resolved);
+    const closed = completionDate(issue, statusLookup);
+    if (closed) {
+      const key = monthSortKey(closed);
       const entry = byMonth.get(key) || { created: 0, resolved: 0 };
       entry.resolved += 1;
       byMonth.set(key, entry);

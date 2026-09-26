@@ -16,6 +16,7 @@ export function VelocityChart({
   const empty = !data.length || data.every((row) => row.period === 'No data' && row.actual === 0);
   return (
     <ChartPanel
+      className="h-full"
       eyebrow={basis === 'week' ? 'Completed by week' : 'Completed sprints'}
       title="Velocity"
       hint={basis === 'week'
@@ -51,8 +52,8 @@ export function VelocityChart({
 
 export function WipAgingChart({ data }: { data: Array<{ bucket: string; count: number }> }) {
   return (
-    <ChartPanel eyebrow="Flow risk" title="WIP aging" hint="In-progress issues by age, not the full backlog." delay={0.34}>
-      <div className="h-64">
+    <ChartPanel className="h-full" eyebrow="Flow risk" title="WIP aging" hint="In-progress issues by age, not the full backlog." delay={0.34}>
+      <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 4 }}>
             <defs>
@@ -143,36 +144,39 @@ export function AssigneeLoadChart({ data }: { data: AssigneeLoadRow[] }) {
 
   return (
     <ChartPanel
+      className="h-full"
       eyebrow="Team load"
       title="Open work by assignee"
       hint="Each bar stacks open tickets by current status. Hover a segment for stage and ticket keys."
       delay={0.38}
     >
-      <div style={{ height: Math.max(288, chartData.length * 36) }}>
-        {chartData.length ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="currentColor" className="text-slate-300/40 dark:text-white/10" />
-              <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" width={148} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={0} />
-              <Tooltip content={<AssigneeStageTooltip rows={data} />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {statuses.map(([status, color], index) => (
-                <Bar
-                  key={status}
-                  dataKey={status}
-                  stackId="stages"
-                  name={status}
-                  fill={color}
-                  radius={index === statuses.length - 1 ? [0, 8, 8, 0] : [0, 0, 0, 0]}
-                  animationDuration={1000}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-slate-500">No open work in this filter.</div>
-        )}
+      <div className="max-h-80 overflow-y-auto pr-1">
+        <div style={{ height: Math.max(288, chartData.length * 36) }}>
+          {chartData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="currentColor" className="text-slate-300/40 dark:text-white/10" />
+                <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="name" width={148} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={0} />
+                <Tooltip content={<AssigneeStageTooltip rows={data} />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                {statuses.map(([status, color], index) => (
+                  <Bar
+                    key={status}
+                    dataKey={status}
+                    stackId="stages"
+                    name={status}
+                    fill={color}
+                    radius={index === statuses.length - 1 ? [0, 8, 8, 0] : [0, 0, 0, 0]}
+                    animationDuration={1000}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-slate-500">No open work in this filter.</div>
+          )}
+        </div>
       </div>
     </ChartPanel>
   );

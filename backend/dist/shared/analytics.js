@@ -607,7 +607,8 @@ function matchesFilters(issue, filters) {
 }
 function completionDate(issue, statusLookup) {
     return toSafeDate(issue.resolved)
-        || (isDoneIssue(issue, statusLookup) ? toSafeDate(issue.lastStatusChangedAt) : null);
+        || toSafeDate(issue.doneAt)
+        || (isDoneIssue(issue, statusLookup) ? toSafeDate(issue.lastStatusChangedAt) || toSafeDate(issue.updated) : null);
 }
 function issueCategory(issue, statusLookup) {
     return issue.statusCategory || categoryForStatus(issue.status, statusLookup);
@@ -647,9 +648,9 @@ function aggregateDashboardMetrics(issues, sprints = [], filters = {}, statusLoo
             entry.created += 1;
             byMonth.set(key, entry);
         }
-        const resolved = toSafeDate(issue.resolved);
-        if (resolved) {
-            const key = monthSortKey(resolved);
+        const closed = completionDate(issue, statusLookup);
+        if (closed) {
+            const key = monthSortKey(closed);
             const entry = byMonth.get(key) || { created: 0, resolved: 0 };
             entry.resolved += 1;
             byMonth.set(key, entry);

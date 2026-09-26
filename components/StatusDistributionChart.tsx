@@ -16,7 +16,7 @@ export function StatusDistributionChart({
 }) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   return (
-    <ChartPanel eyebrow={eyebrow} title={title} delay={0.18} action={<span className="status-chip">{total} issues</span>}>
+    <ChartPanel eyebrow={eyebrow} title={title} delay={0.18} action={<span className="status-chip">{total} issues</span>} className="h-full">
       <div className="relative h-72">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>

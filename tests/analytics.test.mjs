@@ -418,3 +418,37 @@ test('date filters are inclusive and still apply when a sprint is selected', () 
   const sprintAndDates = aggregateDashboardMetrics(issues, [], { sprintId: 7, startDate: '2026-08-21', endDate: '2026-08-21' });
   assert.equal(sprintAndDates.totalIssues, 1);
 });
+
+test('monthly throughput counts closed via doneAt when resolutiondate is missing', () => {
+  const metrics = aggregateDashboardMetrics([
+    {
+      id: '1',
+      key: 'AUD-1',
+      summary: 'Opened Jan, closed Feb via doneAt',
+      status: 'Done',
+      statusCategory: 'done',
+      created: '2026-01-10T00:00:00.000Z',
+      updated: '2026-02-12T00:00:00.000Z',
+      resolved: null,
+      doneAt: '2026-02-12T00:00:00.000Z',
+    },
+    {
+      id: '2',
+      key: 'AUD-2',
+      summary: 'Opened and resolved in March',
+      status: 'Done',
+      statusCategory: 'done',
+      created: '2026-03-01T00:00:00.000Z',
+      updated: '2026-03-20T00:00:00.000Z',
+      resolved: '2026-03-20T00:00:00.000Z',
+    },
+  ]);
+
+  const byPeriod = Object.fromEntries(metrics.createdVsResolved.map((row) => [row.period, row]));
+  assert.equal(byPeriod['2026-Jan']?.created, 1);
+  assert.equal(byPeriod['2026-Jan']?.resolved, 0);
+  assert.equal(byPeriod['2026-Feb']?.created, 0);
+  assert.equal(byPeriod['2026-Feb']?.resolved, 1);
+  assert.equal(byPeriod['2026-Mar']?.created, 1);
+  assert.equal(byPeriod['2026-Mar']?.resolved, 1);
+});

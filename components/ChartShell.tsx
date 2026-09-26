@@ -66,9 +66,9 @@ export function ChartPanel({
 }) {
   return (
     <GlassCard className={className}>
-      <div className="p-5">
+      <div className="flex h-full flex-col p-5">
         <PanelHeader {...header} />
-        {children}
+        <div className="min-h-0 flex-1">{children}</div>
       </div>
     </GlassCard>
   );

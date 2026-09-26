@@ -4,6 +4,29 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import type { FieldSlice } from '@/shared/dashboardContract';
 import { ChartPanel, ChartTooltip } from './ChartShell';
 
+/** Distinct hues per audit type (shared by both SLA charts). */
+const AUDIT_TYPE_COLORS = [
+  '#0891b2', // cyan
+  '#7c3aed', // violet
+  '#059669', // emerald
+  '#d97706', // amber
+  '#dc2626', // red
+  '#2563eb', // blue
+  '#0d9488', // teal
+  '#ea580c', // orange
+  '#4f46e5', // indigo
+  '#65a30d', // lime
+  '#db2777', // pink (one accent only)
+  '#0284c7', // sky
+];
+
+function colorForAuditType(name: string, index: number): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  // Stable by name; mix in index so adjacent bars stay distinct if hashes collide.
+  return AUDIT_TYPE_COLORS[(hash + index) % AUDIT_TYPE_COLORS.length];
+}
+
 export function FieldBarChart({
   data = [],
   eyebrow,
@@ -53,10 +76,11 @@ export function ValidationTimeBarChart({
   hint?: string;
   emptyLabel?: string;
 }) {
-  const chartData = data.map((item) => ({
+  const chartData = data.map((item, index) => ({
     name: item.auditType,
     avgDays: item.avgDays,
     count: item.count,
+    color: colorForAuditType(item.auditType, index),
   }));
 
   return (
@@ -72,9 +96,9 @@ export function ValidationTimeBarChart({
                 content={<ChartTooltip />}
                 cursor={{ fill: 'rgba(148,163,184,0.08)' }}
               />
-              <Bar dataKey="avgDays" name="Avg Days" fill="#ec4899" radius={[0, 8, 8, 0]} animationDuration={900}>
-                {chartData.map((entry, idx) => (
-                  <Cell key={entry.name} fill={['#ec4899', '#f472b6', '#db2777', '#d946ef', '#a78bfa', '#f43f5e'][idx % 6]} />
+              <Bar dataKey="avgDays" name="Avg Days" radius={[0, 8, 8, 0]} animationDuration={900}>
+                {chartData.map((entry) => (
+                  <Cell key={entry.name} fill={entry.color} />
                 ))}
               </Bar>
             </BarChart>

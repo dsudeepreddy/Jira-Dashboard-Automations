@@ -25,6 +25,12 @@ function emailDiagnostics() {
         proxy: env_1.env.SMTP_PROXY || 'not-configured',
         user: env_1.env.SMTP_USER ? (0, env_1.maskSecret)(env_1.env.SMTP_USER) : 'not-configured',
         monthlyReportEnabled: env_1.env.MONTHLY_REPORT_ENABLED,
+        schedule: {
+            weekday: env_1.env.MONTHLY_REPORT_WEEKDAY,
+            hour: env_1.env.MONTHLY_REPORT_HOUR,
+            timezone: env_1.env.MONTHLY_REPORT_TIMEZONE,
+            summary: `Every weekday=${env_1.env.MONTHLY_REPORT_WEEKDAY} (1=Mon) at ${String(env_1.env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env_1.env.MONTHLY_REPORT_TIMEZONE}`,
+        },
     };
 }
 /** HTTP CONNECT through tinyproxy-style proxies (same idea as curl -x). */

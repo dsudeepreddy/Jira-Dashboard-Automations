@@ -19,6 +19,12 @@ export function emailDiagnostics() {
     proxy: env.SMTP_PROXY || 'not-configured',
     user: env.SMTP_USER ? maskSecret(env.SMTP_USER) : 'not-configured',
     monthlyReportEnabled: env.MONTHLY_REPORT_ENABLED,
+    schedule: {
+      weekday: env.MONTHLY_REPORT_WEEKDAY,
+      hour: env.MONTHLY_REPORT_HOUR,
+      timezone: env.MONTHLY_REPORT_TIMEZONE,
+      summary: `Every weekday=${env.MONTHLY_REPORT_WEEKDAY} (1=Mon) at ${String(env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
+    },
   };
 }
 

@@ -8,7 +8,7 @@
     "start": "next start",
     "sync:shared": "node backend/scripts/sync-shared.cjs",
     "lint": "next lint",
-    "test:unit": "npx tsc shared/*.ts --rootDir shared --outDir tests/.tmp --module commonjs --target ES2022 --esModuleInterop --skipLibCheck && node --test tests/analytics.test.mjs tests/comments.test.mjs tests/monthlyReport.test.mjs",
+    "test:unit": "npx tsc shared/*.ts --rootDir shared --outDir tests/.tmp --module commonjs --target ES2022 --esModuleInterop --skipLibCheck && node --test tests/analytics.test.mjs tests/comments.test.mjs tests/monthlyReport.test.mjs tests/monthlyReportSchedule.test.mjs",
     "test:api": "node --test tests/api.test.mjs",
     "test": "npm run test:unit"
   },

@@ -18,7 +18,7 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/db/schema.sql ./dist/db/schema.sql
 COPY --from=builder /app/node_modules ./node_modules
-RUN chown -R app:app /app
+RUN mkdir -p /app/data && chown -R app:app /app
 USER app
 EXPOSE 5000
 CMD ["npm", "run", "start"]

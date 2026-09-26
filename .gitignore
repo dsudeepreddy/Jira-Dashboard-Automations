@@ -7,5 +7,7 @@ npm-debug.log*
 .env
 .DS_Store
 tests/.tmp
-build/images/
 backend/dist/
+backend/data/
+data/
+build/images/

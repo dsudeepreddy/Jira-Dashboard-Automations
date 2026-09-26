@@ -25,9 +25,18 @@ async function sendMonthlyReportHandler(req, res, next) {
             to: req.body?.to || (typeof req.query.to === 'string' ? req.query.to : undefined),
         });
         const result = await (0, monthlyReportService_1.sendMonthlyReport)(parsed);
+        const { attachment, ...rest } = result;
+        const safeAttachment = attachment
+            ? {
+                filename: attachment.filename,
+                contentType: attachment.contentType,
+                bytes: attachment.bytes ?? attachment.content?.length,
+            }
+            : undefined;
         return res.status(parsed.dryRun ? 200 : 202).json({
             status: parsed.dryRun ? 'preview' : 'sent',
-            ...result,
+            ...rest,
+            attachment: safeAttachment,
             requestId: res.locals.requestId,
         });
     }

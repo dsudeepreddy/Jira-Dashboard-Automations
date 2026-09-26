@@ -66,6 +66,8 @@ services:
       - "host.containers.internal:host-gateway"
     ports:
       - "5001:5000"
+    volumes:
+      - backend_data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/v1/health"]
       interval: 15s
@@ -130,6 +132,7 @@ services:
 
 volumes:
   redis_data:
+  backend_data:
 
 networks:
   jira-network:

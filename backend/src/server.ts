@@ -11,6 +11,15 @@ import { getExportIssuesHandler } from './controllers/exportController';
 import { runJiraSync, syncJiraHandler, jiraWebhookHandler } from './controllers/syncController';
 import { sendMonthlyReportHandler } from './controllers/reportController';
 import { sendMonthlyReport } from './services/monthlyReportService';
+import {
+  isMonthlyReportDue,
+  mondayScheduleKey,
+  readScheduleState,
+  reportPeriodKey,
+  shouldSkipAlreadySent,
+  writeScheduleState,
+  zonedParts,
+} from './services/monthlyReportSchedule';
 import { initializeDatabase, checkDatabase, isDatabaseEnabled } from './db/database';
 import { getSyncState } from './db/jiraRepository';
 import healthRouter from './routes/health';
@@ -42,12 +51,23 @@ const syncLimiter = rateLimit({
 
 app.get('/api/v1/health', async (req, res) => {
   const database = await checkDatabase();
+  const scheduleState = readScheduleState();
   const payload: Record<string, unknown> = {
     status: 'ok',
     service: 'backend-api',
     timestamp: new Date().toISOString(),
     jira: jiraDiagnostics,
     email: emailDiagnostics(),
+    monthlyReportSchedule: {
+      enabled: env.MONTHLY_REPORT_ENABLED,
+      weekday: env.MONTHLY_REPORT_WEEKDAY,
+      hour: env.MONTHLY_REPORT_HOUR,
+      timezone: env.MONTHLY_REPORT_TIMEZONE,
+      nextAutoSend: `Every weekday=${env.MONTHLY_REPORT_WEEKDAY} (1=Mon) at ${String(env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
+      lastMondayKey: scheduleState.lastMondayKey || null,
+      lastPeriodKey: scheduleState.lastPeriodKey || null,
+      lastSentAt: scheduleState.lastSentAt || null,
+    },
     database,
   };
   // Optional live Jira probe — keep default /health fast for Compose healthchecks.
@@ -97,46 +117,47 @@ async function startScheduledSync() {
   setInterval(() => { void tick(false); }, env.SYNC_INTERVAL_MS);
 }
 
-let lastMonthlyReportKey: string | null = null;
 let loggedWaitingForReportSlot = false;
-
-function zonedParts(now: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    weekday: 'short',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(now);
-  const read = (type: string) => parts.find((part) => part.type === type)?.value || '';
-  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  return {
-    weekday: weekdayMap[read('weekday')] ?? -1,
-    year: Number(read('year')),
-    month: Number(read('month')),
-    day: Number(read('day')),
-    hour: Number(read('hour')),
-    minute: Number(read('minute')),
-  };
-}
+let loggedEmailNotConfigured = false;
 
 async function startMonthlyReportScheduler() {
-  if (!env.MONTHLY_REPORT_ENABLED) return;
+  if (!env.MONTHLY_REPORT_ENABLED) {
+    console.log(JSON.stringify({
+      event: 'monthly_report_scheduler_disabled',
+      detail: 'Set MONTHLY_REPORT_ENABLED=true to auto-send every Monday at MONTHLY_REPORT_HOUR.',
+    }));
+    return;
+  }
+
+  console.log(JSON.stringify({
+    event: 'monthly_report_scheduler_started',
+    timezone: env.MONTHLY_REPORT_TIMEZONE,
+    weekday: env.MONTHLY_REPORT_WEEKDAY,
+    hour: env.MONTHLY_REPORT_HOUR,
+    emailConfigured: isEmailConfigured(),
+    nextAutoSend: `Every weekday=${env.MONTHLY_REPORT_WEEKDAY} (1=Mon) at ${String(env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
+  }));
+
   const tick = async () => {
     if (!isEmailConfigured()) {
-      console.log(JSON.stringify({ event: 'monthly_report_skipped', reason: 'email_not_configured' }));
+      if (!loggedEmailNotConfigured) {
+        loggedEmailNotConfigured = true;
+        console.log(JSON.stringify({
+          event: 'monthly_report_skipped',
+          reason: 'email_not_configured',
+          detail: 'Set SMTP_HOST, SMTP_FROM, and MONTHLY_REPORT_TO (plus SMTP_PROXY if needed).',
+        }));
+      }
       return;
     }
+    loggedEmailNotConfigured = false;
+
     const now = new Date();
     const local = zonedParts(now, env.MONTHLY_REPORT_TIMEZONE);
     const dueWeekday = env.MONTHLY_REPORT_WEEKDAY;
     const dueHour = env.MONTHLY_REPORT_HOUR;
-    const isDueDay = local.weekday === dueWeekday;
-    const isDueHour = local.hour === dueHour;
-    if (!isDueDay || !isDueHour) {
+
+    if (!isMonthlyReportDue(local, dueWeekday, dueHour)) {
       if (!loggedWaitingForReportSlot) {
         loggedWaitingForReportSlot = true;
         console.log(JSON.stringify({
@@ -152,23 +173,41 @@ async function startMonthlyReportScheduler() {
       return;
     }
     loggedWaitingForReportSlot = false;
-    // One send per local calendar week (year + ISO-ish week from Mon date).
-    const weekKey = `${local.year}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
-    if (lastMonthlyReportKey === weekKey) return;
+
+    const mondayKey = mondayScheduleKey(local);
+    const periodKey = reportPeriodKey(now);
+    const state = readScheduleState();
+    if (shouldSkipAlreadySent({
+      mondayKey,
+      periodKey,
+      state,
+      oncePerPeriod: false,
+    })) {
+      return;
+    }
+
     try {
       const result = await sendMonthlyReport({});
-      lastMonthlyReportKey = weekKey;
+      writeScheduleState({
+        lastMondayKey: mondayKey,
+        lastPeriodKey: periodKey,
+        lastSentAt: new Date().toISOString(),
+      });
       console.log(JSON.stringify({
         event: 'monthly_report_sent',
         subject: result.subject,
         recipients: result.recipients,
         messageId: 'messageId' in result ? result.messageId : undefined,
-        scheduleKey: weekKey,
+        scheduleKey: mondayKey,
+        periodKey,
       }));
     } catch (error) {
       console.error(JSON.stringify({
         event: 'monthly_report_failed',
+        scheduleKey: mondayKey,
+        periodKey,
         error: error instanceof Error ? error.message : 'unknown',
+        detail: 'Will retry each minute while still in the due hour.',
       }));
     }
   };
@@ -198,6 +237,9 @@ async function start() {
       database: env.DB_ENABLED ? 'percona' : 'disabled',
       syncIntervalMs: env.SYNC_INTERVAL_MS,
       monthlyReportEnabled: env.MONTHLY_REPORT_ENABLED,
+      monthlyReportWeekday: env.MONTHLY_REPORT_WEEKDAY,
+      monthlyReportHour: env.MONTHLY_REPORT_HOUR,
+      monthlyReportTimezone: env.MONTHLY_REPORT_TIMEZONE,
       emailConfigured: isEmailConfigured(),
       smtpHostSet: Boolean(env.SMTP_HOST),
       smtpPort: env.SMTP_PORT,

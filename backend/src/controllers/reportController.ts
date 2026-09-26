@@ -27,9 +27,20 @@ export async function sendMonthlyReportHandler(req: Request, res: Response, next
     });
 
     const result = await sendMonthlyReport(parsed);
+    const { attachment, ...rest } = result as typeof result & {
+      attachment?: { filename: string; content?: Buffer; contentType?: string; bytes?: number };
+    };
+    const safeAttachment = attachment
+      ? {
+          filename: attachment.filename,
+          contentType: attachment.contentType,
+          bytes: attachment.bytes ?? attachment.content?.length,
+        }
+      : undefined;
     return res.status(parsed.dryRun ? 200 : 202).json({
       status: parsed.dryRun ? 'preview' : 'sent',
-      ...result,
+      ...rest,
+      attachment: safeAttachment,
       requestId: res.locals.requestId,
     });
   } catch (error) {

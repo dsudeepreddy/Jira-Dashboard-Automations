@@ -52,6 +52,8 @@ services:
       - "host.containers.internal:host-gateway"
     ports:
       - "5001:5000"
+    volumes:
+      - backend_data:/app/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:5000/api/v1/health >/dev/null || curl -fsS http://localhost:5000/api/v1/health >/dev/null || exit 1"]
       interval: 15s
@@ -112,6 +114,7 @@ services:
 
 volumes:
   redis_data:
+  backend_data:
 
 networks:
   jira-network:

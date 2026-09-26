@@ -190,14 +190,23 @@ See [`.env.example`](.env.example) for the full list. Important variables:
 | `STALE_AFTER_MS` | Snapshot older than this is marked stale (Percona mode only) |
 | `DB_ENABLED` | Read/write Percona snapshot |
 | `SMTP_HOST` / `SMTP_FROM` / `MONTHLY_REPORT_TO` | SMTP + stakeholder recipients for monthly email |
-| `MONTHLY_REPORT_ENABLED` | Auto-send previous-month report every Monday at 09:00 (`MONTHLY_REPORT_WEEKDAY=1`, `MONTHLY_REPORT_HOUR=9`, `MONTHLY_REPORT_TIMEZONE=Asia/Kolkata`) |
+| `MONTHLY_REPORT_ENABLED` | Auto-send previous-month report every Monday at 09:00 (`MONTHLY_REPORT_WEEKDAY=1`, `MONTHLY_REPORT_HOUR=9`, `MONTHLY_REPORT_TIMEZONE=Asia/Kolkata`). Requires `SMTP_HOST`, `SMTP_FROM`, and `MONTHLY_REPORT_TO`. |
+| `MONTHLY_REPORT_WEEKDAY` / `HOUR` / `TIMEZONE` | Schedule slot (default Mon 09:00 IST). Retries each minute during that hour if send fails. |
 | `MONTHLY_REPORT_DASHBOARD_URL` | Optional “Open dashboard” link in the email |
 
 ### Monthly report
 
 Subject line: `SRE Audit Monthly Report — August 2026` (optional `· PROJECT`).
 
-Auto-send: every **Monday at 09:00** in `MONTHLY_REPORT_TIMEZONE` (default `Asia/Kolkata`), covering the **previous calendar month**.
+Auto-send: every **Monday at 09:00** in `MONTHLY_REPORT_TIMEZONE` (default `Asia/Kolkata`), covering the **previous calendar month**. The scheduler retries every minute during that hour if SMTP/Jira fails, and persists the last successful Monday key under `/app/data` so container restarts do not double-send the same Monday.
+
+**Required for delivery:** `MONTHLY_REPORT_ENABLED=true`, `SMTP_HOST`, `SMTP_FROM`, `MONTHLY_REPORT_TO` (and usually `SMTP_PROXY` on the VM). Verify with:
+
+```bash
+curl -sS http://localhost:5001/api/v1/health | python3 -m json.tool | less
+# check email.configured=true and monthlyReportSchedule.nextAutoSend
+./scripts/send-monthly-report.sh --smtp-test
+```
 
 The HTML mail includes a short 1–2 line summary plus:
 

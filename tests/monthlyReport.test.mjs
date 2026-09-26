@@ -88,5 +88,5 @@ test('buildMonthlyReport counts opened/closed by audit type and SLAs', () => {
   assert.equal(report.reviewerSlaOverall.avgDays, 8.4);
   assert.ok(report.topBreaches.some((row) => row.key === 'AUD-2' && row.kind === 'team'));
   assert.equal(monthlyReportSubject(report), 'SRE Audit Monthly Report — August 2026 · AUD');
-  assert.match(monthlyReportIntro(report), /opened 2 tickets and closed 1/i);
+  assert.match(monthlyReportIntro(report), /opened 2, closed 1/i);
 });

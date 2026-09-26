@@ -266,25 +266,19 @@ export function monthlyReportSubject(report: MonthlyReport): string {
 export function monthlyReportIntro(report: MonthlyReport): string {
   const net = report.totals.netChange;
   const netText = net === 0
-    ? 'opened and closed volumes were balanced'
+    ? 'opened and closed were balanced'
     : net > 0
-      ? `backlog grew by ${net} ticket${net === 1 ? '' : 's'}`
-      : `backlog shrank by ${Math.abs(net)} ticket${Math.abs(net) === 1 ? '' : 's'}`;
+      ? `backlog +${net}`
+      : `backlog −${Math.abs(net)}`;
 
-  const teamSla = report.teamSlaOverall.avgDays == null
-    ? 'Team SLA had no completed Approved→Under Validation transitions'
-    : `Team SLA averaged ${report.teamSlaOverall.avgDays}d across ${report.teamSlaOverall.count} completed handoff${report.teamSlaOverall.count === 1 ? '' : 's'} (target ${report.teamSlaOverall.targetDays}d)`;
-
-  const reviewerSla = report.reviewerSlaOverall.avgDays == null
-    ? 'Reviewer SLA had no completed Under Validation→Done transitions'
-    : `Reviewer SLA averaged ${report.reviewerSlaOverall.avgDays}d across ${report.reviewerSlaOverall.count} completion${report.reviewerSlaOverall.count === 1 ? '' : 's'} (target ${report.reviewerSlaOverall.targetDays}d)`;
+  const team = report.teamSlaOverall.avgDays == null ? 'Team SLA n/a' : `Team SLA ${report.teamSlaOverall.avgDays}d`;
+  const reviewer = report.reviewerSlaOverall.avgDays == null ? 'Reviewer SLA n/a' : `Reviewer SLA ${report.reviewerSlaOverall.avgDays}d`;
+  const breaches = report.topBreaches.length
+    ? `${report.topBreaches.length} outside SLA`
+    : 'no open SLA breaches';
 
   return [
-    `This is the SRE Audit monthly summary for ${report.periodLabel}${report.projectKey ? ` (${report.projectKey})` : ''}.`,
-    `In this period we opened ${report.totals.opened} ticket${report.totals.opened === 1 ? '' : 's'} and closed ${report.totals.closed}, so ${netText}.`,
-    `${teamSla}. ${reviewerSla}.`,
-    report.topBreaches.length
-      ? `${report.topBreaches.length} open ticket${report.topBreaches.length === 1 ? '' : 's'} currently sit outside the usual SLA window and are listed below for follow-up.`
-      : 'No open tickets are currently outside the usual team/reviewer SLA windows.',
+    `${report.periodLabel}: opened ${report.totals.opened}, closed ${report.totals.closed} (${netText}).`,
+    `${team} · ${reviewer} · ${breaches}.`,
   ].join(' ');
 }

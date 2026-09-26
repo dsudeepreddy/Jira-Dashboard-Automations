@@ -190,7 +190,7 @@ The HTML mail includes a short narrative plus:
 4. Top applications  
 5. Open tickets outside usual team/reviewer SLA  
 
-An Excel workbook (`.xlsx`) is attached with Summary, By audit type, Applications, SLA breaches, and Tickets sheets for the same period.
+An Excel workbook (`.xlsx`) is attached using the **same layout as the dashboard export** (Summary + one sheet per audit type with tickets), scoped to issues opened or closed in that month.
 
 **Send immediately (recommended on VM / Podman):**
 

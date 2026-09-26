@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AUDIT_STATUS_BUCKETS = exports.DEFAULT_REVIEWER_SLA_TARGET_DAYS = exports.DEFAULT_TEAM_SLA_TARGET_DAYS = exports.STATUS_COLORS = void 0;
+exports.colorForStatus = colorForStatus;
 exports.isoWeekKey = isoWeekKey;
 exports.toSafeDate = toSafeDate;
 exports.shiftIsoDate = shiftIsoDate;
@@ -36,6 +37,29 @@ exports.STATUS_COLORS = {
     'On Hold': '#f97316',
     'Under Validation': '#a855f7',
 };
+/** Stable color for a Jira status name (used by status breakdown + assignee stage stacks). */
+function colorForStatus(name) {
+    const normalized = name.toLowerCase().trim();
+    const matchedKey = Object.keys(exports.STATUS_COLORS).find((key) => key.toLowerCase() === normalized);
+    if (matchedKey)
+        return exports.STATUS_COLORS[matchedKey];
+    if (normalized.includes('approve') || normalized.includes('approval'))
+        return exports.STATUS_COLORS.Approve || '#ec4899';
+    if (normalized.includes('todo') || normalized === 'to-do' || normalized === 'to do')
+        return exports.STATUS_COLORS['To Do'] || '#94a3b8';
+    if (normalized.includes('progress'))
+        return exports.STATUS_COLORS['In Progress'] || '#fbbf24';
+    if (normalized.includes('hold'))
+        return exports.STATUS_COLORS['On Hold'] || '#f97316';
+    if (normalized.includes('validation'))
+        return exports.STATUS_COLORS['Under Validation'] || '#a855f7';
+    if (normalized === 'done' || normalized.includes('complete') || normalized.includes('closed')) {
+        return exports.STATUS_COLORS.Done || '#10b981';
+    }
+    if (normalized.includes('block'))
+        return exports.STATUS_COLORS.Blocked || '#f87171';
+    return '#64748b';
+}
 const DONE_NAMES = new Set(['done', 'completed', 'closed', 'resolved', 'complete']);
 const PROGRESS_NAMES = new Set(['in progress', 'indeterminate', 'in review', 'in development', 'doing']);
 const SLICE_COLORS = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#fb7185', '#c084fc', '#2dd4bf', '#f97316', '#818cf8', '#94a3b8'];
@@ -617,31 +641,11 @@ function aggregateDashboardMetrics(issues, sprints = [], filters = {}, statusLoo
     const avgWeeklyThroughput = Number(average(recentThroughput).toFixed(1));
     const statusMap = new Map();
     scoped.forEach((issue) => statusMap.set(issue.status, (statusMap.get(issue.status) || 0) + 1));
-    const statusBreakdown = [...statusMap.entries()].map(([name, value]) => {
-        const normalized = name.toLowerCase().trim();
-        let color = '#64748b';
-        const matchedKey = Object.keys(exports.STATUS_COLORS).find((k) => k.toLowerCase() === normalized);
-        if (matchedKey) {
-            color = exports.STATUS_COLORS[matchedKey];
-        }
-        else if (normalized.includes('approve') || normalized.includes('approval')) {
-            color = exports.STATUS_COLORS['Approve'] || '#ec4899';
-        }
-        else if (normalized.includes('todo') || normalized === 'to-do') {
-            color = exports.STATUS_COLORS['To Do'] || '#94a3b8';
-        }
-        else if (normalized.includes('progress')) {
-            color = exports.STATUS_COLORS['In Progress'] || '#fbbf24';
-        }
-        else if (normalized === 'done') {
-            color = exports.STATUS_COLORS['Done'] || '#10b981';
-        }
-        return {
-            name,
-            value,
-            color,
-        };
-    });
+    const statusBreakdown = [...statusMap.entries()].map(([name, value]) => ({
+        name,
+        value,
+        color: colorForStatus(name),
+    })).sort((a, b) => b.value - a.value);
     const completedSprints = sprints
         .filter((sprint) => {
         const state = sprint.state?.toLowerCase() || '';
@@ -700,13 +704,30 @@ function aggregateDashboardMetrics(issues, sprints = [], filters = {}, statusLoo
     const assigneeMap = new Map();
     openIssues.forEach((issue) => {
         const name = issue.assignee || 'Unassigned';
-        const current = assigneeMap.get(name) || { openCount: 0, points: 0 };
+        const current = assigneeMap.get(name) || { openCount: 0, points: 0, stages: new Map() };
         current.openCount += 1;
         current.points += issuePoints(issue);
+        const stage = current.stages.get(issue.status) || { count: 0, keys: [] };
+        stage.count += 1;
+        if (stage.keys.length < 40)
+            stage.keys.push(issue.key);
+        current.stages.set(issue.status, stage);
         assigneeMap.set(name, current);
     });
     const assigneeLoad = [...assigneeMap.entries()]
-        .map(([name, value]) => ({ name, ...value }))
+        .map(([name, value]) => ({
+        name,
+        openCount: value.openCount,
+        points: value.points,
+        stages: [...value.stages.entries()]
+            .map(([status, stage]) => ({
+            status,
+            count: stage.count,
+            keys: stage.keys,
+            color: colorForStatus(status),
+        }))
+            .sort((a, b) => b.count - a.count || a.status.localeCompare(b.status)),
+    }))
         .sort((a, b) => b.openCount - a.openCount)
         .slice(0, 8);
     const timeMap = new Map();

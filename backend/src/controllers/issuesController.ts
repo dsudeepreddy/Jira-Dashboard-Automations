@@ -57,6 +57,11 @@ export async function getIssuesHandler(req: Request, res: Response, next: NextFu
       assignee?: string | null;
       storyPoints?: number | null;
       flagged?: boolean;
+      auditType?: string[];
+      application?: string[];
+      licenseBu?: string[];
+      epicKey?: string | null;
+      epicName?: string | null;
     }>;
     let total: number;
 
@@ -87,6 +92,11 @@ export async function getIssuesHandler(req: Request, res: Response, next: NextFu
         assignee: issue.assignee,
         storyPoints: issue.storyPoints,
         flagged: issue.flagged,
+        auditType: issue.auditType || [],
+        application: issue.application || [],
+        licenseBu: issue.licenseBu || [],
+        epicKey: issue.epicKey || null,
+        epicName: issue.epicName || null,
         latestComment: comments.get(issue.key) || null,
       })),
       page: parsed.page,

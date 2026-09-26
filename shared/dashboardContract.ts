@@ -38,6 +38,34 @@ export interface DashboardIssue {
   flagged?: boolean;
   latestComment?: LatestHumanComment | null;
   validationDays?: number;
+  auditType?: string[];
+  application?: string[];
+  licenseBu?: string[];
+  epicKey?: string | null;
+  epicName?: string | null;
+  teamSlaDays?: number | null;
+  reviewerSlaDays?: number | null;
+}
+
+export interface AssigneeStageSlice {
+  status: string;
+  count: number;
+  keys: string[];
+  color: string;
+}
+
+export interface AssigneeLoadRow {
+  name: string;
+  openCount: number;
+  points: number;
+  stages: AssigneeStageSlice[];
+}
+
+export interface ExportIssuesPayload {
+  issues: DashboardIssue[];
+  total: number;
+  truncated: boolean;
+  requestId?: string;
 }
 
 export interface FieldSlice {
@@ -122,7 +150,7 @@ export interface DashboardMetrics {
   velocityTrend: Array<{ period: string; target: number; actual: number }>;
   velocityBasis: 'sprint' | 'week';
   wipAging: Array<{ bucket: string; count: number }>;
-  assigneeLoad: Array<{ name: string; openCount: number; points: number }>;
+  assigneeLoad: AssigneeLoadRow[];
   timeInStatus: Array<{ status: string; avgDays: number; count: number }>;
   forecast: {
     remainingIssues: number;

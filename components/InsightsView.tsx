@@ -122,7 +122,7 @@ export function InsightsView({
     [insights, selectedAuditType],
   );
 
-  if (!fieldMetrics || !insights) return null;
+  if (!insights) return null;
 
   const options = auditTypeOptions.length
     ? auditTypeOptions
@@ -132,10 +132,10 @@ export function InsightsView({
     <section className="space-y-5 rounded-3xl border border-cyan-400/20 bg-cyan-50/30 p-4 dark:border-cyan-400/15 dark:bg-cyan-500/[0.05] sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="eyebrow">View more · Audit insights</p>
-          <h2 className="section-title">Audit type dashboards</h2>
+          <p className="eyebrow">Audit types</p>
+          <h2 className="section-title">Workflow, SLAs & breaches</h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-            Main page stays at project level. Pick an audit type here for stage completion, SLAs, and out-of-SLA tickets.
+            Project-level view above; pick an audit type for stage completion, team/reviewer SLAs, and out-of-SLA tickets.
           </p>
         </div>
         <label className="flex flex-col gap-1 text-xs text-slate-500 dark:text-slate-400">
@@ -154,18 +154,16 @@ export function InsightsView({
         </label>
       </div>
 
-      {/* 1. Work by audit type */}
       <FieldBarChart
         data={insights.workByAuditType}
         eyebrow="Volume"
         title="Work by audit type"
-        hint="Total tickets for each audit type in the current project-level filter."
+        hint="Total tickets for each audit type in the current filter."
         emptyLabel="No Audit Type values on issues in this filter."
       />
 
       {selectedAuditType ? (
         <>
-          {/* 2. Completion by stage for selected audit type */}
           <div className="grid gap-5 xl:grid-cols-2">
             <StatusDistributionChart
               data={stageData?.stages || []}
@@ -199,7 +197,6 @@ export function InsightsView({
             </ChartPanel>
           </div>
 
-          {/* 3 + 4. Team and Reviewer SLA for selected type */}
           <div className="grid gap-5 xl:grid-cols-2">
             <GlassCard className="p-5">
               <p className="eyebrow">Team SLA</p>
@@ -239,20 +236,19 @@ export function InsightsView({
             data={insights.teamSlaByAuditType}
             eyebrow="Team SLA"
             title="Approved → Under Validation by audit type"
-            hint="Average days from first Approved transition to first Under Validation. Select an audit type above for stage and breach detail."
+            hint="Average days from first Approved to first Under Validation. Select an audit type for stage and breach detail."
             emptyLabel="No completed team SLAs yet. Sync with changelog to populate."
           />
           <ValidationTimeBarChart
             data={insights.reviewerSlaByAuditType}
             eyebrow="Reviewer SLA"
             title="Under Validation → Done by audit type"
-            hint="Average days from first Under Validation to Done / resolution. Select an audit type above for stage and breach detail."
+            hint="Average days from first Under Validation to Done. Select an audit type for stage and breach detail."
             emptyLabel="No completed reviewer SLAs yet. Sync with changelog to populate."
           />
         </div>
       )}
 
-      {/* 5. Out of SLA ticket lists */}
       <div className="grid gap-5 xl:grid-cols-2">
         <BreachTable
           title={selectedAuditType ? `Team SLA breaches · ${selectedAuditType}` : 'Team SLA breaches'}
@@ -267,6 +263,40 @@ export function InsightsView({
           emptyLabel="No reviewer SLA breaches in this view."
         />
       </div>
+
+      {fieldMetrics ? (
+        <details className="rounded-2xl border border-slate-200/70 bg-white/40 p-4 dark:border-white/10 dark:bg-white/[0.03]">
+          <summary className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-200">
+            More field breakdowns (labels, components, priorities)
+          </summary>
+          <div className="mt-4 grid gap-5 xl:grid-cols-2">
+            <FieldBarChart
+              data={fieldMetrics.labels}
+              eyebrow="Tags"
+              title="By label"
+              emptyLabel="No labels in this filter."
+            />
+            <FieldBarChart
+              data={fieldMetrics.components}
+              eyebrow="Structure"
+              title="By component"
+              emptyLabel="No components in this filter."
+            />
+            <FieldBarChart
+              data={fieldMetrics.priorities}
+              eyebrow="Priority"
+              title="By priority"
+              emptyLabel="No priorities in this filter."
+            />
+            <FieldBarChart
+              data={fieldMetrics.applications}
+              eyebrow="Apps"
+              title="By application"
+              emptyLabel="No applications in this filter."
+            />
+          </div>
+        </details>
+      ) : null}
     </section>
   );
 }

@@ -264,7 +264,8 @@ async function getStoredIssuesPage(filters = {}, page = 1, pageSize = 25, orderB
         ]);
         const sortSql = allowedOrder.has(orderBy) ? orderBy : 'i.updated_at DESC';
         const [rows] = await connection.execute(`SELECT id, issue_key, project_key, summary, status, status_category, issue_type, assignee, story_points,
-              flagged, created_at, updated_at, resolved_at, in_progress_at, last_status_changed_at
+              flagged, labels_json, components_json, license_bu_json, audit_type_json, application_json,
+              epic_key, epic_name, created_at, updated_at, resolved_at, in_progress_at, last_status_changed_at, raw_json
        FROM jira_issues i WHERE ${sql} ORDER BY ${sortSql} LIMIT ${safePageSize} OFFSET ${offset}`, values);
         return { total, issues: rows.map((row) => mapIssueRow(row)) };
     });

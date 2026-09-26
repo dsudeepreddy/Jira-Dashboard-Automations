@@ -192,17 +192,21 @@ The HTML mail includes a short narrative plus:
 **Send immediately (recommended on VM / Podman):**
 
 ```bash
-# rebuild backend image so dist/scripts is present
-podman-compose up -d --build --force-recreate backend-api
+# Preview exact HTML email (no SMTP) — works on current image via HTTP:
+curl -sS --max-time 180 -X POST "http://localhost:5001/api/v1/reports/monthly?dryRun=true" \
+  -H "x-sync-token: $SYNC_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); open("monthly-report-preview.html","w").write(d["html"]); print(d["subject"], "→ monthly-report-preview.html")'
+# open monthly-report-preview.html in a browser
 
-# preview (no SMTP)
-podman exec jira-backend-api node dist/scripts/sendMonthlyReport.js --dry-run
+# Optional month: -d '{"month":"2026-08"}'
+
+# After redeploying backend with latest CLI, dry-run also writes HTML inside the container:
+./scripts/send-monthly-report.sh --dry-run
+podman cp jira-backend-api:/tmp/sre-audit-monthly-2026-08.html ./monthly-report-preview.html
 
 # send for real
-podman exec jira-backend-api node dist/scripts/sendMonthlyReport.js
-
-# or via helper script
-./scripts/send-monthly-report.sh --dry-run
 ./scripts/send-monthly-report.sh
 ```
 

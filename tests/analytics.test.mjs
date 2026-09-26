@@ -108,7 +108,73 @@ test('aggregateDashboardMetrics uses sprint points, cycle time, and in-progress 
   assert.equal(metrics.wipAging.reduce((sum, row) => sum + row.count, 0), 1);
   assert.equal(metrics.forecast.remainingIssues, 2);
   assert.equal(metrics.assigneeLoad[0].name, 'Ada');
+  assert.ok(Array.isArray(metrics.assigneeLoad[0].stages));
   assert.equal(metrics.velocityBasis, 'sprint');
+});
+
+test('assigneeLoad stacks open work by status with ticket keys', () => {
+  const metrics = aggregateDashboardMetrics(
+    [
+      {
+        id: '1',
+        key: 'APP-1',
+        summary: 'IP',
+        status: 'In Progress',
+        statusCategory: 'indeterminate',
+        created: '2026-01-01T00:00:00.000Z',
+        updated: '2026-01-02T00:00:00.000Z',
+        assignee: 'Ada',
+      },
+      {
+        id: '2',
+        key: 'APP-2',
+        summary: 'Hold',
+        status: 'On Hold',
+        statusCategory: 'indeterminate',
+        created: '2026-01-01T00:00:00.000Z',
+        updated: '2026-01-02T00:00:00.000Z',
+        assignee: 'Ada',
+      },
+      {
+        id: '3',
+        key: 'APP-3',
+        summary: 'Todo',
+        status: 'To Do',
+        statusCategory: 'new',
+        created: '2026-01-01T00:00:00.000Z',
+        updated: '2026-01-02T00:00:00.000Z',
+        assignee: 'Bob',
+      },
+      {
+        id: '4',
+        key: 'APP-4',
+        summary: 'Done',
+        status: 'Done',
+        statusCategory: 'done',
+        created: '2026-01-01T00:00:00.000Z',
+        updated: '2026-01-08T00:00:00.000Z',
+        resolved: '2026-01-08T00:00:00.000Z',
+        assignee: 'Ada',
+      },
+    ],
+    [],
+    {},
+    new Map(),
+    new Date('2026-02-01T00:00:00.000Z'),
+  );
+
+  assert.equal(metrics.assigneeLoad[0].name, 'Ada');
+  assert.equal(metrics.assigneeLoad[0].openCount, 2);
+  assert.equal(metrics.assigneeLoad[0].stages.length, 2);
+  const hold = metrics.assigneeLoad[0].stages.find((stage) => stage.status === 'On Hold');
+  const progress = metrics.assigneeLoad[0].stages.find((stage) => stage.status === 'In Progress');
+  assert.equal(hold?.count, 1);
+  assert.deepEqual(hold?.keys, ['APP-2']);
+  assert.equal(progress?.count, 1);
+  assert.deepEqual(progress?.keys, ['APP-1']);
+  assert.ok(hold?.color);
+  assert.equal(metrics.assigneeLoad[1].name, 'Bob');
+  assert.equal(metrics.assigneeLoad[1].openCount, 1);
 });
 
 test('fieldMetrics rolls up labels, priority, and other fields', () => {

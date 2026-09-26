@@ -12,6 +12,7 @@ const jiraClient_1 = require("./services/jiraClient");
 const emailClient_1 = require("./services/emailClient");
 const metricsController_1 = require("./controllers/metricsController");
 const issuesController_1 = require("./controllers/issuesController");
+const exportController_1 = require("./controllers/exportController");
 const syncController_1 = require("./controllers/syncController");
 const reportController_1 = require("./controllers/reportController");
 const monthlyReportService_1 = require("./services/monthlyReportService");
@@ -68,6 +69,7 @@ app.get('/api/v1/health', async (req, res) => {
 app.use('/api/v1', health_1.default);
 app.get('/api/v1/metrics', auth_1.requireDashboardToken, metricsController_1.getMetricsHandler);
 app.get('/api/v1/issues', auth_1.requireDashboardToken, issuesController_1.getIssuesHandler);
+app.get('/api/v1/export/issues', auth_1.requireDashboardToken, exportController_1.getExportIssuesHandler);
 app.post('/api/v1/sync', syncLimiter, auth_1.requireSyncToken, syncController_1.syncJiraHandler);
 app.post('/api/v1/webhooks/jira', syncLimiter, auth_1.requireSyncToken, syncController_1.jiraWebhookHandler);
 app.post('/api/v1/reports/monthly', syncLimiter, auth_1.requireSyncToken, reportController_1.sendMonthlyReportHandler);

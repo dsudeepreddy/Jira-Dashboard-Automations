@@ -1,5 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
+const node_fs_1 = __importDefault(require("node:fs"));
+const node_path_1 = __importDefault(require("node:path"));
 const monthlyReportService_1 = require("../services/monthlyReportService");
 const emailClient_1 = require("../services/emailClient");
 const env_1 = require("../config/env");
@@ -18,12 +23,14 @@ async function main() {
     const month = argValue('--month');
     const projectKey = argValue('--project') || argValue('--projectKey');
     const to = argValue('--to');
+    const outPath = argValue('--out') || argValue('--output');
     console.log(JSON.stringify({
         event: 'monthly_report_cli_start',
         mode: smtpTest ? 'smtp-test' : dryRun ? 'dry-run' : 'send',
         month: month || null,
         projectKey: projectKey || env_1.env.MONTHLY_REPORT_PROJECT_KEY || env_1.env.JIRA_PROJECT_KEY || null,
         to: to || env_1.env.MONTHLY_REPORT_TO || null,
+        outPath: outPath || null,
         email: (0, emailClient_1.emailDiagnostics)(),
         note: smtpTest
             ? 'SMTP-only probe (no Jira). Use this first to verify mail delivery.'
@@ -64,12 +71,26 @@ async function main() {
         subject: result.subject,
         recipients: result.recipients,
         totals: result.report.totals,
+        periodLabel: result.report.periodLabel,
         messageId: 'messageId' in result ? result.messageId : undefined,
         accepted: 'accepted' in result ? result.accepted : undefined,
     }));
-    if (dryRun) {
-        console.log('--- text preview ---');
-        console.log((result.text || '').slice(0, 2000));
+    if (dryRun && 'html' in result && result.html) {
+        const file = outPath
+            || node_path_1.default.join('/tmp', `sre-audit-monthly-${result.report.startDate.slice(0, 7)}.html`);
+        node_fs_1.default.writeFileSync(file, result.html, 'utf8');
+        console.log(JSON.stringify({
+            event: 'monthly_report_html_written',
+            path: file,
+            subject: result.subject,
+            bytes: Buffer.byteLength(result.html, 'utf8'),
+        }));
+        console.log(`HTML preview written to ${file}`);
+        console.log('Copy out of the container, e.g.:');
+        console.log(`  podman cp jira-backend-api:${file} ./monthly-report-preview.html`);
+        console.log('Then open monthly-report-preview.html in a browser.');
+        console.log('--- text preview (first 1500 chars) ---');
+        console.log((result.text || '').slice(0, 1500));
     }
 }
 main().catch((error) => {

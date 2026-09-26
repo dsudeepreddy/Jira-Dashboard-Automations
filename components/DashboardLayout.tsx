@@ -1,10 +1,11 @@
 'use client';
 
-import { AlertTriangle, BarChart3, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Filter, FolderKanban, Gauge, Activity, TimerReset } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Filter, FolderKanban, Gauge, Activity } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { DashboardPayload, IssuePagePayload } from '@/shared/dashboardContract';
+import type { DashboardIssue, DashboardPayload, ExportIssuesPayload, IssuePagePayload } from '@/shared/dashboardContract';
 import { atlassianIssueUrl, UNTAGGED_LABEL } from '@/shared/dashboardContract';
+import { downloadAuditWorkbook } from '@/lib/exportAuditWorkbook';
 import { AmbientBackground } from './AmbientBackground';
 import { GlassCard } from './GlassCard';
 import { MetricCard } from './MetricCard';
@@ -95,8 +96,9 @@ export function DashboardLayout() {
   const [issuePage, setIssuePage] = useState(1);
   const [issuePageSize, setIssuePageSize] = useState(25);
   const [issueSort, setIssueSort] = useState('updated-desc');
-  const [showMore, setShowMore] = useState(false);
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(filters);
   const urlQuery = searchParams.toString();
@@ -157,14 +159,29 @@ export function DashboardLayout() {
 
   const metrics = useMemo(() => {
     if (!data) return [];
-    const unit = data.metrics.velocityUnit === 'points' ? 'pts' : 'issues';
     return [
       { title: 'Total issues', value: data.metrics.totalIssues, icon: FolderKanban, tone: 'cyan' as const },
-      { title: 'Completion rate', value: data.metrics.completionRate, suffix: '%', decimals: 1, icon: Gauge, tone: 'mint' as const },
-      { title: `Velocity (${unit})`, value: data.metrics.velocity, decimals: 1, icon: Activity, tone: 'violet' as const },
-      { title: 'Avg cycle time', value: data.metrics.avgCycleTimeDays, suffix: 'days', decimals: 1, icon: TimerReset, tone: 'amber' as const },
+      { title: 'Open', value: data.metrics.openIssues, icon: Activity, tone: 'amber' as const },
+      { title: 'Done', value: data.metrics.completionRate, suffix: '%', decimals: 1, icon: Gauge, tone: 'mint' as const },
+      { title: 'Blocked', value: data.metrics.blockedCount, icon: AlertTriangle, tone: 'violet' as const },
     ];
   }, [data]);
+
+  const exportExcel = useCallback(async () => {
+    if (!data) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const response = await fetch(`/api/jira/export?${toQuery(filters)}`, { cache: 'no-store' });
+      const payload = await response.json() as ExportIssuesPayload & { detail?: string; error?: string };
+      if (!response.ok) throw new Error(payload.detail || payload.error || 'Export failed');
+      downloadAuditWorkbook(data, payload.issues as DashboardIssue[]);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }, [data, filters]);
 
   const totalPages = Math.max(1, Math.ceil((issues?.total || 0) / issuePageSize));
   const refreshedAt = data?.meta.lastSuccessAt || data?.meta.fetchedAt;
@@ -219,6 +236,15 @@ export function DashboardLayout() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { void exportExcel(); }}
+                    disabled={!data || exporting}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-cyan-400/60 hover:text-cyan-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:text-cyan-300"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {exporting ? 'Exporting…' : 'Export Excel'}
+                  </button>
                   <div className="hidden text-right sm:block">
                     <p className="eyebrow">{syncLabel}</p>
                     <p className="numeric mt-1 text-[11px] text-slate-700 dark:text-slate-200">{lastSync}</p>
@@ -408,50 +434,44 @@ export function DashboardLayout() {
           </GlassCard>
         ) : null}
 
+        {exportError ? (
+          <GlassCard spotlight={false} className="border-red-300/70 bg-red-50/80 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+            Export failed: {exportError}
+          </GlassCard>
+        ) : null}
+
         {loading && !data ? <Skeleton /> : data ? (
           <>
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
             </section>
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                { label: 'License / BU', value: String(data.metrics.fieldMetrics?.uniqueLicenseBus ?? 0), unit: 'values in view', accent: 'from-cyan-400' },
-                { label: 'Audit types', value: String(data.metrics.fieldMetrics?.uniqueAuditTypes ?? 0), unit: 'in this filter', accent: 'from-indigo-400' },
-                { label: 'Applications', value: String(data.metrics.fieldMetrics?.uniqueApplications ?? 0), unit: 'in this filter', accent: 'from-violet-400' },
+                { label: 'Lead time', value: `${data.metrics.avgLeadTimeDays.toFixed(1)}d` },
+                { label: 'Weekly throughput', value: data.metrics.avgWeeklyThroughput.toFixed(1) },
+                { label: 'Forecast', value: data.metrics.forecast.estimatedDate || 'n/a' },
+                { label: 'Audit types', value: String(data.metrics.fieldMetrics?.uniqueAuditTypes ?? 0) },
               ].map((item) => (
-                <GlassCard key={item.label} className="p-4">
-                  <div className={`mb-3 h-1 w-10 rounded-full bg-gradient-to-r ${item.accent} to-transparent`} />
-                  <p className="eyebrow">{item.label}</p>
-                  <p className="numeric mt-2 text-2xl font-medium tracking-tight">{item.value}</p>
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{item.unit}</p>
-                </GlassCard>
+                <div key={item.label} className="rounded-2xl border border-slate-200/60 bg-white/40 px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]">
+                  <p className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{item.label}</p>
+                  <p className="numeric mt-1 text-lg font-medium tracking-tight text-slate-900 dark:text-white">{item.value}</p>
+                </div>
               ))}
             </section>
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {[
-                { label: 'Lead time', value: `${data.metrics.avgLeadTimeDays.toFixed(1)}`, unit: 'days', accent: 'from-cyan-400' },
-                { label: 'Weekly throughput', value: data.metrics.avgWeeklyThroughput.toFixed(1), unit: 'issues', accent: 'from-indigo-400' },
-                { label: 'Blocked / flagged', value: String(data.metrics.blockedCount), unit: 'open risks', accent: 'from-rose-400' },
-                { label: 'Forecast', value: data.metrics.forecast.estimatedDate || 'n/a', unit: `${data.metrics.forecast.remainingIssues} remaining · ${data.metrics.forecast.estimatedWeeks ?? '∞'} weeks`, accent: 'from-fuchsia-400' },
-              ].map((item) => (
-                <GlassCard key={item.label} className="p-4">
-                  <div className={`mb-3 h-1 w-10 rounded-full bg-gradient-to-r ${item.accent} to-transparent`} />
-                  <p className="eyebrow">{item.label}</p>
-                  <p className="numeric mt-2 text-2xl font-medium tracking-tight">{item.value}</p>
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{item.unit}</p>
-                </GlassCard>
-              ))}
-            </section>
+
             <section className="grid gap-5 xl:grid-cols-[0.9fr_1.4fr]">
               <StatusDistributionChart data={data.metrics.statusBreakdown} />
               <ThroughputTrendChart data={data.metrics.createdVsResolved} />
             </section>
-            <section className="grid gap-5 xl:grid-cols-2">
-              <VelocityChart data={data.metrics.velocityTrend} basis={data.metrics.velocityBasis} />
+
+            <section className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
+              <AssigneeLoadChart data={data.metrics.assigneeLoad} />
               <WipAgingChart data={data.metrics.wipAging} />
             </section>
+
             <section className="grid gap-5 xl:grid-cols-2">
-              <AssigneeLoadChart data={data.metrics.assigneeLoad} />
+              <VelocityChart data={data.metrics.velocityTrend} basis={data.metrics.velocityBasis} />
               <GlassCard className="p-5">
                 <div className="mb-5 flex items-center justify-between">
                   <div>
@@ -470,23 +490,13 @@ export function DashboardLayout() {
                 </div>
               </GlassCard>
             </section>
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={() => setShowMore((open) => !open)}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-cyan-400/60 hover:text-cyan-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:text-cyan-300"
-              >
-                {showMore ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                {showMore ? 'View less' : 'View more'}
-              </button>
-            </div>
-            {showMore ? (
-              <InsightsView
-                fieldMetrics={data.metrics.fieldMetrics}
-                auditInsights={data.metrics.auditInsights}
-                auditTypeOptions={data.auditTypes}
-              />
-            ) : null}
+
+            <InsightsView
+              fieldMetrics={data.metrics.fieldMetrics}
+              auditInsights={data.metrics.auditInsights}
+              auditTypeOptions={data.auditTypes}
+            />
+
             <GlassCard className="p-5">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -514,12 +524,13 @@ export function DashboardLayout() {
                 </div>
               </div>
               <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-white/10">
-                <table className="w-full min-w-[980px] text-left text-sm">
+                <table className="w-full min-w-[1080px] text-left text-sm">
                   <thead className="sticky top-0 bg-white/80 text-[10px] uppercase tracking-wider text-slate-500 backdrop-blur-md dark:bg-slate-950/70 dark:text-slate-400">
                     <tr>
                       <th className="px-4 py-3">Key</th>
                       <th className="px-4 py-3">Summary</th>
                       <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Audit type</th>
                       <th className="px-4 py-3">Assignee</th>
                       <th className="px-4 py-3">Latest comment</th>
                       <th className="px-4 py-3">Updated</th>
@@ -549,6 +560,9 @@ export function DashboardLayout() {
                         <td className="max-w-[420px] truncate px-4 py-3 text-slate-700 dark:text-slate-200">{issue.summary}</td>
                         <td className="px-4 py-3">
                           <span className="rounded-full border border-slate-200/80 bg-white/70 px-2.5 py-1 text-[11px] dark:border-white/10 dark:bg-white/5">{issue.status}</span>
+                        </td>
+                        <td className="max-w-[160px] truncate px-4 py-3 text-slate-600 dark:text-slate-300">
+                          {(issue.auditType || []).join(', ') || '—'}
                         </td>
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center gap-2">

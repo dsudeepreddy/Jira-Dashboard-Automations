@@ -31,7 +31,9 @@ Usage: scripts/send-monthly-report.sh [--http|--container] [--smtp-test|--dry-ru
   --container   Run Node CLI inside backend container (default, no auth needed)
   --http        Call POST /api/v1/reports/monthly on the API
   --smtp-test   Send a tiny SMTP probe only (no Jira). Use this first.
-  --dry-run     Build full monthly report only; do not send SMTP
+  --dry-run     Build full monthly report HTML/text only; do not send SMTP
+                Writes /tmp/sre-audit-monthly-YYYY-MM.html inside the container
+  --out PATH    With --dry-run, write HTML to PATH instead of /tmp/...
   --month       Report month (default: previous calendar month)
   --to          Override recipients
   --project     Override project key
@@ -47,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     --month) MONTH="${2:-}"; shift 2 ;;
     --to) TO="${2:-}"; shift 2 ;;
     --project) PROJECT="${2:-}"; shift 2 ;;
+    --out|--output) OUT="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; usage; exit 1 ;;
   esac
@@ -59,6 +62,7 @@ if [[ "$MODE" == "container" ]]; then
   [[ -n "$MONTH" ]] && ARGS+=(--month "$MONTH")
   [[ -n "$TO" ]] && ARGS+=(--to "$TO")
   [[ -n "$PROJECT" ]] && ARGS+=(--project "$PROJECT")
+  [[ -n "${OUT:-}" ]] && ARGS+=(--out "$OUT")
   echo "Running inside ${CONTAINER}: node dist/scripts/sendMonthlyReport.js ${ARGS[*]:-}"
   if [[ ${#ARGS[@]} -gt 0 ]]; then
     exec podman exec "$CONTAINER" node dist/scripts/sendMonthlyReport.js "${ARGS[@]}"

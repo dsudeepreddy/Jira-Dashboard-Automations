@@ -7,6 +7,7 @@ import { jiraClient, jiraDiagnostics } from './services/jiraClient';
 import { emailDiagnostics, isEmailConfigured } from './services/emailClient';
 import { getMetricsHandler } from './controllers/metricsController';
 import { getIssuesHandler } from './controllers/issuesController';
+import { getExportIssuesHandler } from './controllers/exportController';
 import { runJiraSync, syncJiraHandler, jiraWebhookHandler } from './controllers/syncController';
 import { sendMonthlyReportHandler } from './controllers/reportController';
 import { sendMonthlyReport } from './services/monthlyReportService';
@@ -68,6 +69,7 @@ app.get('/api/v1/health', async (req, res) => {
 app.use('/api/v1', healthRouter);
 app.get('/api/v1/metrics', requireDashboardToken, getMetricsHandler);
 app.get('/api/v1/issues', requireDashboardToken, getIssuesHandler);
+app.get('/api/v1/export/issues', requireDashboardToken, getExportIssuesHandler);
 app.post('/api/v1/sync', syncLimiter, requireSyncToken, syncJiraHandler);
 app.post('/api/v1/webhooks/jira', syncLimiter, requireSyncToken, jiraWebhookHandler);
 app.post('/api/v1/reports/monthly', syncLimiter, requireSyncToken, sendMonthlyReportHandler);

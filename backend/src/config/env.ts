@@ -101,7 +101,13 @@ const envSchema = z.object({
   MONTHLY_REPORT_PROJECT_KEY: z.preprocess((value) => cleanOptionalString(value) ?? '', z.string().optional().or(z.literal(''))),
   MONTHLY_REPORT_DASHBOARD_URL: z.preprocess((value) => cleanOptionalString(value) ?? '', z.string().optional().or(z.literal(''))),
   MONTHLY_REPORT_ENABLED: z.preprocess((value) => asBool(value, false), z.boolean().default(false)),
+  /** @deprecated Prefer weekly Monday schedule via MONTHLY_REPORT_WEEKDAY / HOUR. Kept for compatibility. */
   MONTHLY_REPORT_DAY: z.coerce.number().int().min(1).max(28).default(1),
+  /** 0 = Sunday … 1 = Monday (default). */
+  MONTHLY_REPORT_WEEKDAY: z.coerce.number().int().min(0).max(6).default(1),
+  /** Local hour (0–23) in MONTHLY_REPORT_TIMEZONE. Default 9 = 09:00. */
+  MONTHLY_REPORT_HOUR: z.coerce.number().int().min(0).max(23).default(9),
+  MONTHLY_REPORT_TIMEZONE: z.preprocess((value) => cleanEnvString(value) || 'Asia/Kolkata', z.string().default('Asia/Kolkata')),
 });
 
 const parsedEnv = envSchema.parse(process.env);

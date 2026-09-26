@@ -133,6 +133,26 @@ export function isoWeekKey(value: Date): string {
   return `${utc.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
 
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/** Sortable YYYY-MM key for calendar month buckets. */
+export function monthSortKey(value: Date): string {
+  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Display label like 2026-Jan. */
+export function monthAxisLabel(value: Date | string): string {
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})$/.exec(value);
+    if (match) {
+      const monthIndex = Number(match[2]) - 1;
+      return `${match[1]}-${MONTH_SHORT[monthIndex] || match[2]}`;
+    }
+    return value;
+  }
+  return `${value.getUTCFullYear()}-${MONTH_SHORT[value.getUTCMonth()]}`;
+}
+
 export function toSafeDate(value?: string | null): Date | null {
   if (!value) return null;
   const date = new Date(value);
@@ -388,6 +408,8 @@ function emptyMetrics(): DashboardMetrics {
   return {
     totalIssues: 0,
     openIssues: 0,
+    underValidationCount: 0,
+    doneCount: 0,
     blockedCount: 0,
     completionRate: 0,
     velocity: 0,
@@ -395,9 +417,11 @@ function emptyMetrics(): DashboardMetrics {
     avgCycleTimeDays: 0,
     avgLeadTimeDays: 0,
     avgWeeklyThroughput: 0,
+    avgMonthlyThroughput: 0,
     createdVsResolved: [{ period: 'No data', created: 0, resolved: 0 }],
     statusBreakdown: [],
     velocityTrend: [{ period: 'No data', target: 0, actual: 0 }],
+    velocityBasis: 'week',
     wipAging: [
       { bucket: '0–2d', count: 0 },
       { bucket: '3–7d', count: 0 },
@@ -407,7 +431,6 @@ function emptyMetrics(): DashboardMetrics {
     assigneeLoad: [],
     timeInStatus: [],
     forecast: { remainingIssues: 0, avgWeeklyThroughput: 0, estimatedWeeks: null, estimatedDate: null },
-    velocityBasis: 'week',
     fieldMetrics: emptyFieldMetrics(),
     validationTimeByAuditType: [],
     auditInsights: emptyAuditInsights(),
@@ -715,31 +738,39 @@ export function aggregateDashboardMetrics(
     })
     .filter((value): value is number => value !== null);
 
-  const byWeek = new Map<string, { created: number; resolved: number }>();
+  const byMonth = new Map<string, { created: number; resolved: number }>();
   scoped.forEach((issue) => {
     const created = toSafeDate(issue.created);
     if (created) {
-      const key = isoWeekKey(created);
-      const entry = byWeek.get(key) || { created: 0, resolved: 0 };
+      const key = monthSortKey(created);
+      const entry = byMonth.get(key) || { created: 0, resolved: 0 };
       entry.created += 1;
-      byWeek.set(key, entry);
+      byMonth.set(key, entry);
     }
     const resolved = toSafeDate(issue.resolved);
     if (resolved) {
-      const key = isoWeekKey(resolved);
-      const entry = byWeek.get(key) || { created: 0, resolved: 0 };
+      const key = monthSortKey(resolved);
+      const entry = byMonth.get(key) || { created: 0, resolved: 0 };
       entry.resolved += 1;
-      byWeek.set(key, entry);
+      byMonth.set(key, entry);
     }
   });
 
-  const createdVsResolved = [...byWeek.entries()]
+  const createdVsResolved = [...byMonth.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-8)
-    .map(([period, value]) => ({ period, created: value.created, resolved: value.resolved }));
+    .slice(-12)
+    .map(([key, value]) => ({
+      period: monthAxisLabel(key),
+      created: value.created,
+      resolved: value.resolved,
+    }));
 
+  const recentMonthly = createdVsResolved.slice(-6).map((row) => row.resolved);
+  const avgMonthlyThroughput = Number(average(recentMonthly).toFixed(1));
   const recentThroughput = createdVsResolved.slice(-4).map((row) => row.resolved);
   const avgWeeklyThroughput = Number(average(recentThroughput).toFixed(1));
+
+  const underValidationCount = openIssues.filter((issue) => isUnderValidationStatus(issue.status)).length;
 
   const statusMap = new Map<string, number>();
   scoped.forEach((issue) => statusMap.set(issue.status, (statusMap.get(issue.status) || 0) + 1));
@@ -839,8 +870,7 @@ export function aggregateDashboardMetrics(
         }))
         .sort((a, b) => b.count - a.count || a.status.localeCompare(b.status)),
     }))
-    .sort((a, b) => b.openCount - a.openCount)
-    .slice(0, 8);
+    .sort((a, b) => b.openCount - a.openCount);
 
   const timeMap = new Map<string, { totalDays: number; count: number }>();
   openIssues.forEach((issue) => {
@@ -899,6 +929,8 @@ export function aggregateDashboardMetrics(
   return {
     totalIssues: scoped.length,
     openIssues: remainingIssues,
+    underValidationCount,
+    doneCount: doneIssues.length,
     blockedCount,
     completionRate: Number(completionRate.toFixed(1)),
     velocity: Number(Number(latestVelocity).toFixed(1)),
@@ -906,6 +938,7 @@ export function aggregateDashboardMetrics(
     avgCycleTimeDays: Number(average(cycleTimes).toFixed(1)),
     avgLeadTimeDays: Number(average(leadTimes).toFixed(1)),
     avgWeeklyThroughput,
+    avgMonthlyThroughput,
     createdVsResolved: createdVsResolved.length ? createdVsResolved : emptyMetrics().createdVsResolved,
     statusBreakdown,
     velocityTrend,

@@ -83,11 +83,18 @@ export function connectViaHttpProxy(
   });
 }
 
+export type MailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+};
+
 export async function sendMail(input: {
   to: string | string[];
   subject: string;
   text: string;
   html: string;
+  attachments?: MailAttachment[];
 }): Promise<{ messageId: string; accepted: string[] }> {
   if (!env.SMTP_HOST || !env.SMTP_FROM) {
     throw new Error('SMTP is not configured. Set SMTP_HOST and SMTP_FROM.');
@@ -101,6 +108,10 @@ export async function sendMail(input: {
     port,
     proxy: env.SMTP_PROXY || null,
     to: Array.isArray(input.to) ? input.to : [input.to],
+    attachments: (input.attachments || []).map((item) => ({
+      filename: item.filename,
+      bytes: item.content.length,
+    })),
   }));
 
   const transporter = nodemailer.createTransport({
@@ -145,6 +156,11 @@ export async function sendMail(input: {
       subject: input.subject,
       text: input.text,
       html: input.html,
+      attachments: (input.attachments || []).map((item) => ({
+        filename: item.filename,
+        content: item.content,
+        contentType: item.contentType,
+      })),
     });
     console.log(JSON.stringify({
       event: 'smtp_send_ok',

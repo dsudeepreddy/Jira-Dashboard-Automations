@@ -75,7 +75,7 @@ async function main() {
         messageId: 'messageId' in result ? result.messageId : undefined,
         accepted: 'accepted' in result ? result.accepted : undefined,
     }));
-    if (dryRun && 'html' in result && result.html) {
+    if (result.dryRun) {
         const file = outPath
             || node_path_1.default.join('/tmp', `sre-audit-monthly-${result.report.startDate.slice(0, 7)}.html`);
         node_fs_1.default.writeFileSync(file, result.html, 'utf8');
@@ -85,7 +85,16 @@ async function main() {
             subject: result.subject,
             bytes: Buffer.byteLength(result.html, 'utf8'),
         }));
+        const xlsxPath = file.replace(/\.html?$/i, '.xlsx');
+        node_fs_1.default.writeFileSync(xlsxPath, result.attachment.content);
+        console.log(JSON.stringify({
+            event: 'monthly_report_xlsx_written',
+            path: xlsxPath,
+            filename: result.attachment.filename,
+            bytes: result.attachment.bytes,
+        }));
         console.log(`HTML preview written to ${file}`);
+        console.log(`Excel preview written to ${xlsxPath}`);
         console.log('Copy out of the container, e.g.:');
         console.log(`  podman cp jira-backend-api:${file} ./monthly-report-preview.html`);
         console.log('Then open monthly-report-preview.html in a browser.');

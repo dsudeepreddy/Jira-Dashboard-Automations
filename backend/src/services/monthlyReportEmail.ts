@@ -150,10 +150,15 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
             </tr>
             ${dashboardUrl ? `
             <tr>
-              <td style="padding:8px 28px 28px;">
+              <td style="padding:8px 28px 12px;">
                 <a href="${escapeHtml(dashboardUrl)}" style="display:inline-block;background:#0891b2;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;">Open dashboard</a>
               </td>
             </tr>` : ''}
+            <tr>
+              <td style="padding:0 28px 28px;font-size:12px;color:#64748b;">
+                An Excel workbook with this month’s detail is attached to this email.
+              </td>
+            </tr>
           </table>
         </td>
       </tr>

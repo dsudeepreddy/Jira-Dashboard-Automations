@@ -97,7 +97,29 @@ async function startScheduledSync() {
     setInterval(() => { void tick(false); }, env_1.env.SYNC_INTERVAL_MS);
 }
 let lastMonthlyReportKey = null;
-let loggedWaitingForReportDay = false;
+let loggedWaitingForReportSlot = false;
+function zonedParts(now, timeZone) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        weekday: 'short',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+    }).formatToParts(now);
+    const read = (type) => parts.find((part) => part.type === type)?.value || '';
+    const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return {
+        weekday: weekdayMap[read('weekday')] ?? -1,
+        year: Number(read('year')),
+        month: Number(read('month')),
+        day: Number(read('day')),
+        hour: Number(read('hour')),
+        minute: Number(read('minute')),
+    };
+}
 async function startMonthlyReportScheduler() {
     if (!env_1.env.MONTHLY_REPORT_ENABLED)
         return;
@@ -107,31 +129,40 @@ async function startMonthlyReportScheduler() {
             return;
         }
         const now = new Date();
-        const day = now.getUTCDate();
-        if (day !== env_1.env.MONTHLY_REPORT_DAY) {
-            if (!loggedWaitingForReportDay) {
-                loggedWaitingForReportDay = true;
+        const local = zonedParts(now, env_1.env.MONTHLY_REPORT_TIMEZONE);
+        const dueWeekday = env_1.env.MONTHLY_REPORT_WEEKDAY;
+        const dueHour = env_1.env.MONTHLY_REPORT_HOUR;
+        const isDueDay = local.weekday === dueWeekday;
+        const isDueHour = local.hour === dueHour;
+        if (!isDueDay || !isDueHour) {
+            if (!loggedWaitingForReportSlot) {
+                loggedWaitingForReportSlot = true;
                 console.log(JSON.stringify({
                     event: 'monthly_report_waiting',
-                    utcDate: day,
-                    reportDay: env_1.env.MONTHLY_REPORT_DAY,
-                    nextAutoSend: `Next auto-send is on UTC day ${env_1.env.MONTHLY_REPORT_DAY} (previous calendar month). To send now: POST /api/v1/reports/monthly`,
+                    timezone: env_1.env.MONTHLY_REPORT_TIMEZONE,
+                    weekday: local.weekday,
+                    hour: local.hour,
+                    dueWeekday,
+                    dueHour,
+                    nextAutoSend: `Every weekday=${dueWeekday} (1=Mon) at ${String(dueHour).padStart(2, '0')}:00 ${env_1.env.MONTHLY_REPORT_TIMEZONE}. To send now: POST /api/v1/reports/monthly`,
                 }));
             }
             return;
         }
-        loggedWaitingForReportDay = false;
-        const key = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-        if (lastMonthlyReportKey === key)
+        loggedWaitingForReportSlot = false;
+        // One send per local calendar week (year + ISO-ish week from Mon date).
+        const weekKey = `${local.year}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
+        if (lastMonthlyReportKey === weekKey)
             return;
         try {
             const result = await (0, monthlyReportService_1.sendMonthlyReport)({});
-            lastMonthlyReportKey = key;
+            lastMonthlyReportKey = weekKey;
             console.log(JSON.stringify({
                 event: 'monthly_report_sent',
                 subject: result.subject,
                 recipients: result.recipients,
                 messageId: 'messageId' in result ? result.messageId : undefined,
+                scheduleKey: weekKey,
             }));
         }
         catch (error) {
@@ -141,7 +172,7 @@ async function startMonthlyReportScheduler() {
             }));
         }
     };
-    setInterval(() => { void tick(); }, 60 * 60 * 1000);
+    setInterval(() => { void tick(); }, 60 * 1000);
     void tick();
 }
 async function start() {

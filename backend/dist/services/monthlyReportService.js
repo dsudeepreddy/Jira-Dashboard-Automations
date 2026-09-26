@@ -10,6 +10,7 @@ const jiraRepository_1 = require("../db/jiraRepository");
 const jiraClient_1 = require("./jiraClient");
 const monthlyReport_1 = require("../shared/monthlyReport");
 const monthlyReportEmail_1 = require("./monthlyReportEmail");
+const monthlyReportWorkbook_1 = require("./monthlyReportWorkbook");
 const emailClient_1 = require("./emailClient");
 function parseRecipients(value) {
     return (value || '')
@@ -53,10 +54,11 @@ async function generateMonthlyReport(options = {}) {
     });
     if ((0, database_1.isDatabaseEnabled)())
         await (0, jiraRepository_1.getStoredStatuses)().catch(() => []);
-    return (0, monthlyReport_1.buildMonthlyReport)(issues, {
+    const report = (0, monthlyReport_1.buildMonthlyReport)(issues, {
         ...window,
         projectKey,
     });
+    return { report, issues };
 }
 /** Tiny SMTP-only probe — does not call Jira. */
 async function sendSmtpTestEmail(options = {}) {
@@ -104,7 +106,7 @@ async function sendMonthlyReport(options = {}) {
         month: options.month || null,
         projectKey: options.projectKey || env_1.env.MONTHLY_REPORT_PROJECT_KEY || env_1.env.JIRA_PROJECT_KEY || null,
     }));
-    const report = await generateMonthlyReport({
+    const { report, issues } = await generateMonthlyReport({
         month: options.month,
         projectKey: options.projectKey,
     });
@@ -116,6 +118,13 @@ async function sendMonthlyReport(options = {}) {
         periodLabel: report.periodLabel,
     }));
     const rendered = (0, monthlyReportEmail_1.renderMonthlyReportEmail)(report, env_1.env.MONTHLY_REPORT_DASHBOARD_URL || undefined);
+    const workbook = (0, monthlyReportWorkbook_1.buildMonthlyReportWorkbookBuffer)(report, issues);
+    const attachment = {
+        filename: workbook.filename,
+        content: workbook.content,
+        contentType: workbook.contentType,
+        bytes: workbook.content.length,
+    };
     const recipients = parseRecipients(options.to || env_1.env.MONTHLY_REPORT_TO);
     if (options.dryRun) {
         return {
@@ -126,6 +135,7 @@ async function sendMonthlyReport(options = {}) {
             report,
             html: rendered.html,
             text: rendered.text,
+            attachment,
         };
     }
     if (!(0, emailClient_1.isEmailConfigured)()) {
@@ -143,8 +153,13 @@ async function sendMonthlyReport(options = {}) {
     const sent = await (0, emailClient_1.sendMail)({
         to: recipients,
         subject: rendered.subject,
-        text: rendered.text,
+        text: `${rendered.text}\n\nExcel attachment: ${workbook.filename}`,
         html: rendered.html,
+        attachments: [{
+                filename: workbook.filename,
+                content: workbook.content,
+                contentType: workbook.contentType,
+            }],
     });
     return {
         dryRun: false,
@@ -154,5 +169,9 @@ async function sendMonthlyReport(options = {}) {
         report,
         messageId: sent.messageId,
         accepted: sent.accepted,
+        attachment: {
+            filename: attachment.filename,
+            bytes: attachment.bytes,
+        },
     };
 }

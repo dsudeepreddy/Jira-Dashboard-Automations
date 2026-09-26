@@ -92,6 +92,10 @@ async function sendMail(input) {
         port,
         proxy: env_1.env.SMTP_PROXY || null,
         to: Array.isArray(input.to) ? input.to : [input.to],
+        attachments: (input.attachments || []).map((item) => ({
+            filename: item.filename,
+            bytes: item.content.length,
+        })),
     }));
     const transporter = nodemailer_1.default.createTransport({
         host,
@@ -128,6 +132,11 @@ async function sendMail(input) {
             subject: input.subject,
             text: input.text,
             html: input.html,
+            attachments: (input.attachments || []).map((item) => ({
+                filename: item.filename,
+                content: item.content,
+                contentType: item.contentType,
+            })),
         });
         console.log(JSON.stringify({
             event: 'smtp_send_ok',

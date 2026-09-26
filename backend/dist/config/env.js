@@ -104,7 +104,13 @@ const envSchema = zod_1.z.object({
     MONTHLY_REPORT_PROJECT_KEY: zod_1.z.preprocess((value) => cleanOptionalString(value) ?? '', zod_1.z.string().optional().or(zod_1.z.literal(''))),
     MONTHLY_REPORT_DASHBOARD_URL: zod_1.z.preprocess((value) => cleanOptionalString(value) ?? '', zod_1.z.string().optional().or(zod_1.z.literal(''))),
     MONTHLY_REPORT_ENABLED: zod_1.z.preprocess((value) => asBool(value, false), zod_1.z.boolean().default(false)),
+    /** @deprecated Prefer weekly Monday schedule via MONTHLY_REPORT_WEEKDAY / HOUR. Kept for compatibility. */
     MONTHLY_REPORT_DAY: zod_1.z.coerce.number().int().min(1).max(28).default(1),
+    /** 0 = Sunday … 1 = Monday (default). */
+    MONTHLY_REPORT_WEEKDAY: zod_1.z.coerce.number().int().min(0).max(6).default(1),
+    /** Local hour (0–23) in MONTHLY_REPORT_TIMEZONE. Default 9 = 09:00. */
+    MONTHLY_REPORT_HOUR: zod_1.z.coerce.number().int().min(0).max(23).default(9),
+    MONTHLY_REPORT_TIMEZONE: zod_1.z.preprocess((value) => cleanEnvString(value) || 'Asia/Kolkata', zod_1.z.string().default('Asia/Kolkata')),
 });
 const parsedEnv = envSchema.parse(process.env);
 // Allow SMTP_HOST="smtp.example.com:25" by splitting host/port.

@@ -148,13 +148,13 @@ export function AssigneeLoadChart({ data }: { data: AssigneeLoadRow[] }) {
       hint="Each bar stacks open tickets by current status. Hover a segment for stage and ticket keys."
       delay={0.38}
     >
-      <div className="h-72">
+      <div style={{ height: Math.max(288, chartData.length * 36) }}>
         {chartData.length ? (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="currentColor" className="text-slate-300/40 dark:text-white/10" />
               <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" width={104} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+              <YAxis type="category" dataKey="name" width={148} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={0} />
               <Tooltip content={<AssigneeStageTooltip rows={data} />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {statuses.map(([status, color], index) => (

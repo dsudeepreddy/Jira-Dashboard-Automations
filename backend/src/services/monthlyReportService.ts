@@ -8,7 +8,9 @@ import {
   previousMonthWindow,
   type MonthlyReport,
 } from '../shared/monthlyReport';
+import type { AnalyticsIssue } from '../shared/analytics';
 import { renderMonthlyReportEmail } from './monthlyReportEmail';
+import { buildMonthlyReportWorkbookBuffer } from './monthlyReportWorkbook';
 import { emailDiagnostics, isEmailConfigured, sendMail } from './emailClient';
 
 function parseRecipients(value?: string): string[] {
@@ -52,7 +54,7 @@ export async function loadIssuesForMonthlyReport(options: {
 export async function generateMonthlyReport(options: {
   month?: string;
   projectKey?: string;
-} = {}): Promise<MonthlyReport> {
+} = {}): Promise<{ report: MonthlyReport; issues: AnalyticsIssue[] }> {
   const window = options.month ? monthWindowFromYm(options.month) : previousMonthWindow();
   const projectKey = options.projectKey || env.MONTHLY_REPORT_PROJECT_KEY || env.JIRA_PROJECT_KEY || undefined;
   const issues = await loadIssuesForMonthlyReport({
@@ -61,10 +63,11 @@ export async function generateMonthlyReport(options: {
     endDate: window.endDate,
   });
   if (isDatabaseEnabled()) await getStoredStatuses().catch(() => []);
-  return buildMonthlyReport(issues, {
+  const report = buildMonthlyReport(issues, {
     ...window,
     projectKey,
   });
+  return { report, issues };
 }
 
 /** Tiny SMTP-only probe — does not call Jira. */
@@ -107,6 +110,13 @@ export async function sendSmtpTestEmail(options: { to?: string } = {}) {
   };
 }
 
+export type MonthlyReportAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+  bytes: number;
+};
+
 export async function sendMonthlyReport(options: {
   month?: string;
   projectKey?: string;
@@ -121,7 +131,7 @@ export async function sendMonthlyReport(options: {
     projectKey: options.projectKey || env.MONTHLY_REPORT_PROJECT_KEY || env.JIRA_PROJECT_KEY || null,
   }));
 
-  const report = await generateMonthlyReport({
+  const { report, issues } = await generateMonthlyReport({
     month: options.month,
     projectKey: options.projectKey,
   });
@@ -134,6 +144,13 @@ export async function sendMonthlyReport(options: {
   }));
 
   const rendered = renderMonthlyReportEmail(report, env.MONTHLY_REPORT_DASHBOARD_URL || undefined);
+  const workbook = buildMonthlyReportWorkbookBuffer(report, issues);
+  const attachment: MonthlyReportAttachment = {
+    filename: workbook.filename,
+    content: workbook.content,
+    contentType: workbook.contentType,
+    bytes: workbook.content.length,
+  };
   const recipients = parseRecipients(options.to || env.MONTHLY_REPORT_TO);
 
   if (options.dryRun) {
@@ -145,6 +162,7 @@ export async function sendMonthlyReport(options: {
       report,
       html: rendered.html,
       text: rendered.text,
+      attachment,
     };
   }
 
@@ -164,8 +182,13 @@ export async function sendMonthlyReport(options: {
   const sent = await sendMail({
     to: recipients,
     subject: rendered.subject,
-    text: rendered.text,
+    text: `${rendered.text}\n\nExcel attachment: ${workbook.filename}`,
     html: rendered.html,
+    attachments: [{
+      filename: workbook.filename,
+      content: workbook.content,
+      contentType: workbook.contentType,
+    }],
   });
 
   return {
@@ -176,5 +199,9 @@ export async function sendMonthlyReport(options: {
     report,
     messageId: sent.messageId,
     accepted: sent.accepted,
+    attachment: {
+      filename: attachment.filename,
+      bytes: attachment.bytes,
+    },
   };
 }

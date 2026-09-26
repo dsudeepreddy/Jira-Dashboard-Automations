@@ -41,9 +41,8 @@ Reload is not a Percona sync. To persist a snapshot, enable the database and cal
 | Velocity | Story points (or issue count if points are missing) completed in recent **closed** sprints plus the **active** sprint. The dashed line is a rolling average of earlier sprints. If issues have no sprint membership, the chart falls back to completed work by ISO week (`YYYY-Www`). |
 | Cycle time | First transition into an In Progress category → done. |
 | Lead time | Created → done. |
-| Throughput | Issues completed per ISO week. Forecast uses the last four weeks. |
+| Throughput | Issues opened vs closed by calendar month (`2026-Jan` axis). Monthly throughput KPI averages the last six months of closures. |
 | WIP aging | Open *in-progress* issues only, bucketed 0–2d / 3–7d / 8–14d / 14d+. |
-| Forecast | Remaining open issues ÷ recent weekly throughput. |
 
 Date filters apply to created date, except when a sprint is selected (the sprint is the window).
 
@@ -92,7 +91,9 @@ SMTP_FROM="noreply@phonepe.com"
 SMTP_PROXY="http://tinyproxy:8888"
 MONTHLY_REPORT_TO="you@phonepe.com"
 MONTHLY_REPORT_ENABLED="true"
-MONTHLY_REPORT_DAY="1"
+MONTHLY_REPORT_WEEKDAY="1"
+MONTHLY_REPORT_HOUR="9"
+MONTHLY_REPORT_TIMEZONE="Asia/Kolkata"
 SYNC_API_TOKEN="pick-a-long-secret"
 ```
 
@@ -174,7 +175,7 @@ See [`.env.example`](.env.example) for the full list. Important variables:
 | `STALE_AFTER_MS` | Snapshot older than this is marked stale (Percona mode only) |
 | `DB_ENABLED` | Read/write Percona snapshot |
 | `SMTP_HOST` / `SMTP_FROM` / `MONTHLY_REPORT_TO` | SMTP + stakeholder recipients for monthly email |
-| `MONTHLY_REPORT_ENABLED` | Auto-send previous month on `MONTHLY_REPORT_DAY` (UTC, default 1) |
+| `MONTHLY_REPORT_ENABLED` | Auto-send previous-month report every Monday at 09:00 (`MONTHLY_REPORT_WEEKDAY=1`, `MONTHLY_REPORT_HOUR=9`, `MONTHLY_REPORT_TIMEZONE=Asia/Kolkata`) |
 | `MONTHLY_REPORT_DASHBOARD_URL` | Optional “Open dashboard” link in the email |
 
 ### Monthly report
@@ -188,6 +189,8 @@ The HTML mail includes a short narrative plus:
 3. Opened & closed **by audit type**, with team & reviewer SLA averages for that month  
 4. Top applications  
 5. Open tickets outside usual team/reviewer SLA  
+
+An Excel workbook (`.xlsx`) is attached with Summary, By audit type, Applications, SLA breaches, and Tickets sheets for the same period.
 
 **Send immediately (recommended on VM / Podman):**
 

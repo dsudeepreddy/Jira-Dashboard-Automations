@@ -138,6 +138,8 @@ export interface AuditInsights {
 export interface DashboardMetrics {
   totalIssues: number;
   openIssues: number;
+  underValidationCount: number;
+  doneCount: number;
   blockedCount: number;
   completionRate: number;
   velocity: number;
@@ -145,6 +147,7 @@ export interface DashboardMetrics {
   avgCycleTimeDays: number;
   avgLeadTimeDays: number;
   avgWeeklyThroughput: number;
+  avgMonthlyThroughput: number;
   createdVsResolved: Array<{ period: string; created: number; resolved: number }>;
   statusBreakdown: Array<{ name: string; value: number; color: string }>;
   velocityTrend: Array<{ period: string; target: number; actual: number }>;

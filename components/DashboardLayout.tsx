@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle, BarChart3, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Filter, FolderKanban, Gauge, Activity } from 'lucide-react';
+import { AlertTriangle, AppWindow, BarChart3, Building2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ClipboardList, Download, Filter, FolderKanban, Activity, CheckCircle2, ClipboardCheck, TrendingUp } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DashboardIssue, DashboardPayload, ExportIssuesPayload, IssuePagePayload } from '@/shared/dashboardContract';
@@ -12,6 +12,7 @@ import { MetricCard } from './MetricCard';
 import { StatusDistributionChart } from './StatusDistributionChart';
 import { ThroughputTrendChart } from './ThroughputTrendChart';
 import { AssigneeLoadChart, VelocityChart, WipAgingChart } from './FlowCharts';
+import { FieldBarChart } from './FieldCharts';
 import { InsightsView } from './InsightsView';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -160,10 +161,41 @@ export function DashboardLayout() {
   const metrics = useMemo(() => {
     if (!data) return [];
     return [
-      { title: 'Total issues', value: data.metrics.totalIssues, icon: FolderKanban, tone: 'cyan' as const },
-      { title: 'Open', value: data.metrics.openIssues, icon: Activity, tone: 'amber' as const },
-      { title: 'Done', value: data.metrics.completionRate, suffix: '%', decimals: 1, icon: Gauge, tone: 'mint' as const },
-      { title: 'Blocked', value: data.metrics.blockedCount, icon: AlertTriangle, tone: 'violet' as const },
+      { title: "Total Jira's", value: data.metrics.totalIssues, icon: FolderKanban, tone: 'cyan' as const },
+      { title: "Open Jira's", value: data.metrics.openIssues, icon: Activity, tone: 'amber' as const },
+      { title: "Under Validation Jira's", value: data.metrics.underValidationCount ?? 0, icon: ClipboardCheck, tone: 'violet' as const },
+      { title: "Done Jira's", value: data.metrics.doneCount ?? 0, icon: CheckCircle2, tone: 'mint' as const },
+    ];
+  }, [data]);
+
+  const secondaryMetrics = useMemo(() => {
+    if (!data) return [];
+    return [
+      {
+        title: 'License / BU',
+        value: data.metrics.fieldMetrics?.uniqueLicenseBus ?? 0,
+        icon: Building2,
+        tone: 'cyan' as const,
+      },
+      {
+        title: 'Audit types',
+        value: data.metrics.fieldMetrics?.uniqueAuditTypes ?? 0,
+        icon: ClipboardList,
+        tone: 'violet' as const,
+      },
+      {
+        title: 'Applications',
+        value: data.metrics.fieldMetrics?.uniqueApplications ?? 0,
+        icon: AppWindow,
+        tone: 'amber' as const,
+      },
+      {
+        title: 'Monthly throughput',
+        value: data.metrics.avgMonthlyThroughput ?? data.metrics.avgWeeklyThroughput,
+        icon: TrendingUp,
+        tone: 'mint' as const,
+        decimals: 1,
+      },
     ];
   }, [data]);
 
@@ -446,18 +478,8 @@ export function DashboardLayout() {
               {metrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
             </section>
 
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                { label: 'Lead time', value: `${data.metrics.avgLeadTimeDays.toFixed(1)}d` },
-                { label: 'Weekly throughput', value: data.metrics.avgWeeklyThroughput.toFixed(1) },
-                { label: 'Forecast', value: data.metrics.forecast.estimatedDate || 'n/a' },
-                { label: 'Audit types', value: String(data.metrics.fieldMetrics?.uniqueAuditTypes ?? 0) },
-              ].map((item) => (
-                <div key={item.label} className="rounded-2xl border border-slate-200/60 bg-white/40 px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]">
-                  <p className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{item.label}</p>
-                  <p className="numeric mt-1 text-lg font-medium tracking-tight text-slate-900 dark:text-white">{item.value}</p>
-                </div>
-              ))}
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {secondaryMetrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
             </section>
 
             <section className="grid gap-5 xl:grid-cols-[0.9fr_1.4fr]">
@@ -469,6 +491,19 @@ export function DashboardLayout() {
               <AssigneeLoadChart data={data.metrics.assigneeLoad} />
               <WipAgingChart data={data.metrics.wipAging} />
             </section>
+
+            <FieldBarChart
+              data={data.metrics.auditInsights?.workByAuditType || []}
+              eyebrow="Volume"
+              title="Work by audit type"
+              hint="Total tickets for each audit type in the current filter."
+              emptyLabel="No Audit Type values on issues in this filter."
+            />
+
+            <InsightsView
+              auditInsights={data.metrics.auditInsights}
+              auditTypeOptions={data.auditTypes}
+            />
 
             <section className="grid gap-5 xl:grid-cols-2">
               <VelocityChart data={data.metrics.velocityTrend} basis={data.metrics.velocityBasis} />
@@ -490,12 +525,6 @@ export function DashboardLayout() {
                 </div>
               </GlassCard>
             </section>
-
-            <InsightsView
-              fieldMetrics={data.metrics.fieldMetrics}
-              auditInsights={data.metrics.auditInsights}
-              auditTypeOptions={data.auditTypes}
-            />
 
             <GlassCard className="p-5">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">

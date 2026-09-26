@@ -76,7 +76,8 @@ The Next.js app **does not** call Jira. `lib/jira/jiraService.ts` exists only to
 | `components/*Chart*.tsx`, `FlowCharts.tsx` | Recharts widgets. |
 | `components/GlassCard.tsx`, `MetricCard.tsx` | Visual primitives. |
 | `lib/backendProxy.ts` | Shared proxy helper and `x-api-token` forwarding. |
-| `shared/analytics.ts` | **Canonical** aggregation (cycle time, velocity, WIP, forecast). |
+| `shared/analytics.ts` | **Canonical** aggregation (cycle time, velocity, in-progress aging, SLAs). |
+| `shared/slaLabels.ts` | User-facing SLA / chart label constants (dashboard, email, Excel). |
 | `shared/dashboardContract.ts` | TypeScript contract for API JSON. |
 | `backend/src/server.ts` | Express app, middleware, scheduled sync. |
 | `backend/src/services/jiraClient.ts` | Only Jira HTTP client. |
@@ -270,16 +271,17 @@ Status categories: Jira `statusCategory.key` when present (`new` | `indeterminat
 | Cycle time | `inProgressAt` (or created) → completion date; mean days |
 | Lead time | created → completion date; mean days |
 | Completion date | `resolved`, else last status change if done |
-| Throughput chart | created and resolved counts by **ISO week** `YYYY-Www`; last 8 weeks |
-| Avg weekly throughput | mean of **resolved** in the **last 4** of those weeks |
+| Throughput chart | created and closed counts by **calendar month** (`2026-Jan`); last 12 months. Closed uses `resolved` → `doneAt` → last status change |
+| Avg monthly throughput | mean of **closed** counts in the **last 6** months |
 | Velocity (sprint basis) | For closed (`closed`/`complete`/`completeDate`) sprints (last 6) **plus active**; value = story points of done members if any issue has points, else issue count. `target` = mean of prior sprints in the series |
 | Velocity (week basis) | Used when there are no sprints in the trend **or** no issue has `sprintIds`. Done work bucketed by ISO week of completion |
 | `velocity` KPI | Last point of the trend series |
-| WIP aging | Open issues with category `indeterminate` only; age from in-progress / last status change / created; buckets 0–2d, 3–7d, 8–14d, 14d+ |
-| Assignee load | Open issues, top 8 by count |
+| In-progress aging | Open issues with category `indeterminate` only; age from in-progress / last status change / created; buckets 0–2d, 3–7d, 8–14d, 14d+ (UI title; formerly “WIP aging”) |
+| Assignee load | All assignees with open work; stacked by current status |
 | Time in status | Open issues; average days since last status change/updated/created; top 8 |
 | Blocked | `flagged` or status matches `/block/i` |
-| Forecast | remaining open ÷ avg weekly throughput → weeks and calendar date |
+| SRE Audit Team SLA | Approved → Under Validation (default target 7d). Breaches listed as **SRE Audit Team SLA breaches** |
+| Compliance SLA | Under Validation → Done (default target 7d). Breaches listed as **Compliance SLA breaches** |
 
 Filters: project, type, sprint IDs. If `sprintId` is set, **created date filters are ignored** (sprint is the window).
 

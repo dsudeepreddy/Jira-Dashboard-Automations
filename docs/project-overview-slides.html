@@ -95,7 +95,7 @@
       <div class="row row-2">
         <div class="card">
           <h3>Jira is the system of record, not the report</h3>
-          <p>Boards show work items. Leaders still need cycle time, velocity, WIP aging, and a forecast — without exporting CSVs or trusting a pie chart of every issue.</p>
+          <p>Boards show work items. Leaders still need cycle time, velocity, in-progress aging, and audit SLAs — without exporting CSVs or trusting a pie chart of every issue.</p>
         </div>
         <div class="card">
           <h3>Direct Jira in the browser is a non-starter</h3>
@@ -115,7 +115,7 @@
       <div class="row row-3">
         <div class="card"><span class="tag">Flow</span><h3>Cycle &amp; lead time</h3><p>First In Progress → done, and created → done, from changelog — not created → resolved as a shortcut.</p></div>
         <div class="card"><span class="tag">Delivery</span><h3>Velocity &amp; throughput</h3><p>Points or issue count on closed + active sprints. ISO-week fallback if sprint membership is missing. Throughput by <code>YYYY-Www</code>.</p></div>
-        <div class="card"><span class="tag">Risk</span><h3>WIP, blocked, load</h3><p>In-progress aging buckets, flagged/blocked count, assignee load, and time-in-status for open work.</p></div>
+        <div class="card"><span class="tag">Risk</span><h3>Aging, load, SLA</h3><p>In-progress aging buckets, assignee load, SRE Audit Team / Compliance SLA breaches, and time-in-status for open work.</p></div>
       </div>
       <div class="row row-3" style="margin-top:18px">
         <div class="card"><span class="tag">Plan</span><h3>Forecast</h3><p>Remaining open issues ÷ last four weeks of throughput → estimated weeks and date.</p></div>
@@ -222,7 +222,9 @@
           <tr><td>Cycle time</td><td>First changelog transition into In Progress → done.</td></tr>
           <tr><td>Lead time</td><td>Created → done.</td></tr>
           <tr><td>Throughput</td><td>Issues completed per ISO week. Forecast uses the last four weeks.</td></tr>
-          <tr><td>WIP aging</td><td>Open in-progress issues only: 0–2d / 3–7d / 8–14d / 14d+.</td></tr>
+          <tr><td>In-progress aging</td><td>Open in-progress issues only: 0–2d / 3–7d / 8–14d / 14d+.</td></tr>
+          <tr><td>SRE Audit Team SLA</td><td>Approved → Under Validation; breaches include in-flight aging past target.</td></tr>
+          <tr><td>Compliance SLA</td><td>Under Validation → Done; breaches include in-flight aging past target.</td></tr>
           <tr><td>Forecast</td><td>Open issues ÷ recent weekly throughput → estimated weeks and date.</td></tr>
         </tbody>
       </table>

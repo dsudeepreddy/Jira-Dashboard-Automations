@@ -5,6 +5,12 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { AuditInsights, SlaBreachTicket } from '@/shared/dashboardContract';
 import { atlassianIssueUrl } from '@/shared/dashboardContract';
+import {
+  COMPLIANCE_SLA_BREACHES_LABEL,
+  COMPLIANCE_SLA_LABEL,
+  SRE_AUDIT_TEAM_SLA_BREACHES_LABEL,
+  SRE_AUDIT_TEAM_SLA_LABEL,
+} from '@/shared/slaLabels';
 import { ChartPanel, ChartTooltip } from './ChartShell';
 import { ValidationTimeBarChart } from './FieldCharts';
 import { GlassCard } from './GlassCard';
@@ -198,7 +204,7 @@ export function InsightsView({
 
               <div className="grid gap-5 xl:grid-cols-2">
                 <GlassCard className="p-5">
-                  <p className="eyebrow">Team SLA</p>
+                  <p className="eyebrow">{SRE_AUDIT_TEAM_SLA_LABEL}</p>
                   <h2 className="section-title">Approved → Under Validation</h2>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     Average days from first Approved transition to first Under Validation for {selectedAuditType}.
@@ -208,12 +214,12 @@ export function InsightsView({
                     <span className="ml-2 text-sm font-medium text-slate-500">days</span>
                   </p>
                   <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    {teamSla ? `${teamSla.count} completed transition${teamSla.count === 1 ? '' : 's'}` : 'No completed team SLAs yet'}
+                    {teamSla ? `${teamSla.count} completed transition${teamSla.count === 1 ? '' : 's'}` : `No completed ${SRE_AUDIT_TEAM_SLA_LABEL}s yet`}
                     {' · '}target {insights.teamSlaTargetDays}d
                   </p>
                 </GlassCard>
                 <GlassCard className="p-5">
-                  <p className="eyebrow">Reviewer SLA</p>
+                  <p className="eyebrow">{COMPLIANCE_SLA_LABEL}</p>
                   <h2 className="section-title">Under Validation → Done</h2>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     Average days from first Under Validation transition to Done / resolution for {selectedAuditType}.
@@ -223,7 +229,7 @@ export function InsightsView({
                     <span className="ml-2 text-sm font-medium text-slate-500">days</span>
                   </p>
                   <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    {reviewerSla ? `${reviewerSla.count} completed transition${reviewerSla.count === 1 ? '' : 's'}` : 'No completed reviewer SLAs yet'}
+                    {reviewerSla ? `${reviewerSla.count} completed transition${reviewerSla.count === 1 ? '' : 's'}` : `No completed ${COMPLIANCE_SLA_LABEL}s yet`}
                     {' · '}target {insights.reviewerSlaTargetDays}d
                   </p>
                 </GlassCard>
@@ -233,33 +239,33 @@ export function InsightsView({
             <div className="grid gap-5 xl:grid-cols-2">
               <ValidationTimeBarChart
                 data={insights.teamSlaByAuditType}
-                eyebrow="Team SLA"
+                eyebrow={SRE_AUDIT_TEAM_SLA_LABEL}
                 title="Approved → Under Validation by audit type"
                 hint="Average days from first Approved to first Under Validation. Select an audit type for stage and breach detail."
-                emptyLabel="No completed team SLAs yet. Sync with changelog to populate."
+                emptyLabel={`No completed ${SRE_AUDIT_TEAM_SLA_LABEL}s yet. Sync with changelog to populate.`}
               />
               <ValidationTimeBarChart
                 data={insights.reviewerSlaByAuditType}
-                eyebrow="Reviewer SLA"
+                eyebrow={COMPLIANCE_SLA_LABEL}
                 title="Under Validation → Done by audit type"
                 hint="Average days from first Under Validation to Done. Select an audit type for stage and breach detail."
-                emptyLabel="No completed reviewer SLAs yet. Sync with changelog to populate."
+                emptyLabel={`No completed ${COMPLIANCE_SLA_LABEL}s yet. Sync with changelog to populate.`}
               />
             </div>
           )}
 
           <div className="grid gap-5 xl:grid-cols-2">
             <BreachTable
-              title={selectedAuditType ? `Team SLA breaches · ${selectedAuditType}` : 'Team SLA breaches'}
-              hint={`Tickets over the usual team SLA of ${insights.teamSlaTargetDays} days (Approved → Under Validation), including in-flight aging.`}
+              title={selectedAuditType ? `${SRE_AUDIT_TEAM_SLA_BREACHES_LABEL} · ${selectedAuditType}` : SRE_AUDIT_TEAM_SLA_BREACHES_LABEL}
+              hint={`Tickets over the usual ${SRE_AUDIT_TEAM_SLA_LABEL} of ${insights.teamSlaTargetDays} days (Approved → Under Validation), including in-flight aging.`}
               tickets={teamBreaches}
-              emptyLabel="No team SLA breaches in this view."
+              emptyLabel={`No ${SRE_AUDIT_TEAM_SLA_BREACHES_LABEL.toLowerCase()} in this view.`}
             />
             <BreachTable
-              title={selectedAuditType ? `Reviewer SLA breaches · ${selectedAuditType}` : 'Reviewer SLA breaches'}
-              hint={`Tickets over the usual reviewer SLA of ${insights.reviewerSlaTargetDays} days (Under Validation → Done), including in-flight aging.`}
+              title={selectedAuditType ? `${COMPLIANCE_SLA_BREACHES_LABEL} · ${selectedAuditType}` : COMPLIANCE_SLA_BREACHES_LABEL}
+              hint={`Tickets over the usual ${COMPLIANCE_SLA_LABEL} of ${insights.reviewerSlaTargetDays} days (Under Validation → Done), including in-flight aging.`}
               tickets={reviewerBreaches}
-              emptyLabel="No reviewer SLA breaches in this view."
+              emptyLabel={`No ${COMPLIANCE_SLA_BREACHES_LABEL.toLowerCase()} in this view.`}
             />
           </div>
         </div>

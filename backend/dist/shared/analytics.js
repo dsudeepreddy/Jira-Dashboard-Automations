@@ -221,8 +221,8 @@ function bucketAuditStatus(status) {
     return 'Other';
 }
 /**
- * Team SLA: first Approved → first Under Validation.
- * Reviewer SLA: first Under Validation → first Done (or resolutiondate).
+ * SRE Audit Team SLA: first Approved → first Under Validation.
+ * Compliance SLA: first Under Validation → first Done (or resolutiondate).
  */
 function deriveAuditSlaTimestamps(created, resolved, currentStatus, histories, now = new Date()) {
     const sorted = [...histories].sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());

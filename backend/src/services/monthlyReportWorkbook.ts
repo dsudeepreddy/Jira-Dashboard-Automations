@@ -5,6 +5,11 @@ import {
 } from '../shared/analytics';
 import type { DashboardIssue, DashboardPayload } from '../shared/dashboardContract';
 import type { MonthlyReport } from '../shared/monthlyReport';
+import {
+  COMPLIANCE_SLA_LABEL,
+  SRE_AUDIT_TEAM_SLA_LABEL,
+  slaKindLabel,
+} from '../shared/slaLabels';
 
 function sheetName(raw: string, used: Set<string>): string {
   let base = raw.replace(/[\\/?*[\]:]/g, ' ').replace(/\s+/g, ' ').trim() || 'Sheet';
@@ -85,8 +90,8 @@ function issueRows(issues: DashboardIssue[]) {
     Created: issue.created?.slice(0, 10) || '',
     Updated: issue.updated?.slice(0, 10) || '',
     Resolved: issue.resolved?.slice(0, 10) || '',
-    'Team SLA days': issue.teamSlaDays ?? '',
-    'Reviewer SLA days': issue.reviewerSlaDays ?? '',
+    [`${SRE_AUDIT_TEAM_SLA_LABEL} days`]: issue.teamSlaDays ?? '',
+    [`${COMPLIANCE_SLA_LABEL} days`]: issue.reviewerSlaDays ?? '',
   }));
 }
 
@@ -158,8 +163,8 @@ export function buildMonthlyReportWorkbookBuffer(
     ['Still open (current)', report.totals.stillOpen],
     ['On hold', report.totals.onHold],
     ['Under validation', report.totals.underValidation],
-    ['Team SLA avg (days)', report.teamSlaOverall.avgDays ?? ''],
-    ['Reviewer SLA avg (days)', report.reviewerSlaOverall.avgDays ?? ''],
+    [`${SRE_AUDIT_TEAM_SLA_LABEL} avg (days)`, report.teamSlaOverall.avgDays ?? ''],
+    [`${COMPLIANCE_SLA_LABEL} avg (days)`, report.reviewerSlaOverall.avgDays ?? ''],
     [],
     ['Dashboard-style KPIs (month activity set)', 'Value'],
     ['Total issues in export', exportIssues.length],
@@ -178,13 +183,13 @@ export function buildMonthlyReportWorkbookBuffer(
       row.completionRate,
     ]),
     [],
-    ['Team SLA by audit type', 'Avg days', 'Count'],
+    [`${SRE_AUDIT_TEAM_SLA_LABEL} by audit type`, 'Avg days', 'Count'],
     ...(insights?.teamSlaByAuditType || []).map((row) => [row.auditType, row.avgDays, row.count]),
     [],
-    ['Reviewer SLA by audit type', 'Avg days', 'Count'],
+    [`${COMPLIANCE_SLA_LABEL} by audit type`, 'Avg days', 'Count'],
     ...(insights?.reviewerSlaByAuditType || []).map((row) => [row.auditType, row.avgDays, row.count]),
     [],
-    ['Opened / closed by audit type (month)', 'Opened', 'Closed', 'Team SLA', 'Reviewer SLA'],
+    ['Opened / closed by audit type (month)', 'Opened', 'Closed', SRE_AUDIT_TEAM_SLA_LABEL, COMPLIANCE_SLA_LABEL],
     ...report.byAuditType.map((row) => [
       row.auditType,
       row.opened,
@@ -224,8 +229,8 @@ export function buildMonthlyReportWorkbookBuffer(
       ['Opened this month', monthType?.opened ?? ''],
       ['Closed this month', monthType?.closed ?? ''],
       ['Open (current status)', typeIssues.filter((issue) => !issue.resolved).length],
-      ['Team SLA avg (days)', teamSla?.avgDays ?? monthType?.teamSlaAvgDays ?? ''],
-      ['Reviewer SLA avg (days)', reviewerSla?.avgDays ?? monthType?.reviewerSlaAvgDays ?? ''],
+      [`${SRE_AUDIT_TEAM_SLA_LABEL} avg (days)`, teamSla?.avgDays ?? monthType?.teamSlaAvgDays ?? ''],
+      [`${COMPLIANCE_SLA_LABEL} avg (days)`, reviewerSla?.avgDays ?? monthType?.reviewerSlaAvgDays ?? ''],
       [],
     ]);
     let nextRow = 9;
@@ -262,7 +267,7 @@ export function buildMonthlyReportWorkbookBuffer(
       XLSX.utils.json_to_sheet(report.topBreaches.map((row) => ({
         Key: row.key,
         Summary: row.summary,
-        Kind: row.kind === 'team' ? 'Team' : 'Reviewer',
+        Kind: slaKindLabel(row.kind),
         Status: row.status,
         Assignee: row.assignee || 'Unassigned',
         'Audit types': row.auditTypes.join(', '),

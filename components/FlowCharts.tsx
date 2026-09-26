@@ -52,7 +52,7 @@ export function VelocityChart({
 
 export function WipAgingChart({ data }: { data: Array<{ bucket: string; count: number }> }) {
   return (
-    <ChartPanel className="h-full" eyebrow="Flow risk" title="WIP aging" hint="In-progress issues by age, not the full backlog." delay={0.34}>
+    <ChartPanel className="h-full" eyebrow="Flow risk" title="In-progress aging" hint="In-progress issues by age, not the full backlog." delay={0.34}>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 4 }}>

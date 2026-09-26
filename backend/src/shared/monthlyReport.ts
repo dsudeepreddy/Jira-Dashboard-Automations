@@ -6,6 +6,10 @@ import {
   isDoneIssue,
   toSafeDate,
 } from './analytics';
+import {
+  COMPLIANCE_SLA_LABEL,
+  SRE_AUDIT_TEAM_SLA_LABEL,
+} from './slaLabels';
 
 export interface MonthlyAuditTypeRow {
   auditType: string;
@@ -271,8 +275,12 @@ export function monthlyReportIntro(report: MonthlyReport): string {
       ? `backlog +${net}`
       : `backlog −${Math.abs(net)}`;
 
-  const team = report.teamSlaOverall.avgDays == null ? 'Team SLA n/a' : `Team SLA ${report.teamSlaOverall.avgDays}d`;
-  const reviewer = report.reviewerSlaOverall.avgDays == null ? 'Reviewer SLA n/a' : `Reviewer SLA ${report.reviewerSlaOverall.avgDays}d`;
+  const team = report.teamSlaOverall.avgDays == null
+    ? `${SRE_AUDIT_TEAM_SLA_LABEL} n/a`
+    : `${SRE_AUDIT_TEAM_SLA_LABEL} ${report.teamSlaOverall.avgDays}d`;
+  const reviewer = report.reviewerSlaOverall.avgDays == null
+    ? `${COMPLIANCE_SLA_LABEL} n/a`
+    : `${COMPLIANCE_SLA_LABEL} ${report.reviewerSlaOverall.avgDays}d`;
   const breaches = report.topBreaches.length
     ? `${report.topBreaches.length} outside SLA`
     : 'no open SLA breaches';

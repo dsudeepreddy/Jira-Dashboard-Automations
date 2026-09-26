@@ -269,8 +269,8 @@ export function bucketAuditStatus(status: string): AuditStatusBucket | 'Other' {
 }
 
 /**
- * Team SLA: first Approved → first Under Validation.
- * Reviewer SLA: first Under Validation → first Done (or resolutiondate).
+ * SRE Audit Team SLA: first Approved → first Under Validation.
+ * Compliance SLA: first Under Validation → first Done (or resolutiondate).
  */
 export function deriveAuditSlaTimestamps(
   created: string,

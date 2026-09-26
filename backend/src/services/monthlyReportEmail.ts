@@ -1,3 +1,8 @@
+import {
+  COMPLIANCE_SLA_LABEL,
+  SRE_AUDIT_TEAM_SLA_LABEL,
+  slaKindLabel,
+} from '../shared/slaLabels';
 import type { MonthlyReport } from '../shared/monthlyReport';
 import { monthlyReportIntro, monthlyReportSubject } from '../shared/monthlyReport';
 import { ATLASSIAN_BROWSE_BASE_URL } from '../shared/dashboardContract';
@@ -180,7 +185,7 @@ function breachList(report: MonthlyReport): string {
       <td style="padding:8px 10px;border-bottom:1px solid #fee2e2;font-size:12px;color:#334155;">${escapeHtml(row.summary.slice(0, 64))}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #fee2e2;font-size:11px;">
         <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:${row.kind === 'team' ? '#fff7ed' : '#ecfdf5'};color:${row.kind === 'team' ? '#c2410c' : '#047857'};font-weight:600;">
-          ${row.kind === 'team' ? 'Team' : 'Reviewer'}
+          ${slaKindLabel(row.kind)}
         </span>
       </td>
       <td style="padding:8px 10px;border-bottom:1px solid #fee2e2;font-size:12px;font-weight:700;color:#b91c1c;white-space:nowrap;">${row.slaDays}d / ${row.targetDays}d</td>
@@ -226,7 +231,7 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
       .slice(0, 8)
       .map((row) => ({ label: row.auditType, value: row.teamSlaAvgDays as number, suffix: 'd' })),
     COLORS.team,
-    'No completed team SLA handoffs this month.',
+    'No completed SRE Audit Team SLA handoffs this month.',
   );
 
   const reviewerSlaBars = singleBarChart(
@@ -235,7 +240,7 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
       .slice(0, 8)
       .map((row) => ({ label: row.auditType, value: row.reviewerSlaAvgDays as number, suffix: 'd' })),
     COLORS.reviewer,
-    'No completed reviewer SLA transitions this month.',
+    'No completed Compliance SLA transitions this month.',
   );
 
   const html = `<!DOCTYPE html>
@@ -275,8 +280,8 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
                   <tr>
                     ${metricCard('On hold', String(report.totals.onHold), COLORS.hold, '#fff7ed')}
                     ${metricCard('Under validation', String(report.totals.underValidation), COLORS.validation, '#faf5ff')}
-                    ${metricCard('Team SLA avg', report.teamSlaOverall.avgDays == null ? '—' : `${report.teamSlaOverall.avgDays}d`, COLORS.team, '#fffbeb')}
-                    ${metricCard('Reviewer SLA avg', report.reviewerSlaOverall.avgDays == null ? '—' : `${report.reviewerSlaOverall.avgDays}d`, COLORS.reviewer, '#ecfdf5')}
+                    ${metricCard(`${SRE_AUDIT_TEAM_SLA_LABEL} avg`, report.teamSlaOverall.avgDays == null ? '—' : `${report.teamSlaOverall.avgDays}d`, COLORS.team, '#fffbeb')}
+                    ${metricCard(`${COMPLIANCE_SLA_LABEL} avg`, report.reviewerSlaOverall.avgDays == null ? '—' : `${report.reviewerSlaOverall.avgDays}d`, COLORS.reviewer, '#ecfdf5')}
                   </tr>
                 </table>
               </td>
@@ -287,13 +292,13 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
             <tr><td style="padding:8px 20px 12px;">${auditBars}</td></tr>
             ${sectionTitle('Top applications', 'Opened vs closed by application')}
             <tr><td style="padding:8px 20px 12px;">${appBars}</td></tr>
-            ${sectionTitle('Team SLA by audit type', `Approved → Under Validation (target ${report.teamSlaOverall.targetDays}d)`)}
+            ${sectionTitle(`${SRE_AUDIT_TEAM_SLA_LABEL} by audit type`, `Approved → Under Validation (target ${report.teamSlaOverall.targetDays}d)`)}
             <tr><td style="padding:8px 20px 12px;">${teamSlaBars}</td></tr>
-            ${sectionTitle('Reviewer SLA by audit type', `Under Validation → Done (target ${report.reviewerSlaOverall.targetDays}d)`)}
+            ${sectionTitle(`${COMPLIANCE_SLA_LABEL} by audit type`, `Under Validation → Done (target ${report.reviewerSlaOverall.targetDays}d)`)}
             <tr><td style="padding:8px 20px 12px;">${reviewerSlaBars}</td></tr>
             ${sectionTitle('Open work snapshot', 'Current open portfolio pressure')}
             <tr><td style="padding:8px 20px 12px;">${snapshotBars(report)}</td></tr>
-            ${sectionTitle('Outside usual SLA', `Team ${report.teamSlaOverall.targetDays}d · Reviewer ${report.reviewerSlaOverall.targetDays}d`)}
+            ${sectionTitle('Outside usual SLA', `${SRE_AUDIT_TEAM_SLA_LABEL} ${report.teamSlaOverall.targetDays}d · ${COMPLIANCE_SLA_LABEL} ${report.reviewerSlaOverall.targetDays}d`)}
             <tr><td style="padding:8px 20px 16px;">${breachList(report)}</td></tr>
             ${dashboardUrl ? `
             <tr>
@@ -324,8 +329,8 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
     `Still open: ${report.totals.stillOpen}`,
     `On hold: ${report.totals.onHold}`,
     `Under validation: ${report.totals.underValidation}`,
-    `Team SLA avg: ${report.teamSlaOverall.avgDays ?? 'n/a'}`,
-    `Reviewer SLA avg: ${report.reviewerSlaOverall.avgDays ?? 'n/a'}`,
+    `${SRE_AUDIT_TEAM_SLA_LABEL} avg: ${report.teamSlaOverall.avgDays ?? 'n/a'}`,
+    `${COMPLIANCE_SLA_LABEL} avg: ${report.reviewerSlaOverall.avgDays ?? 'n/a'}`,
     '',
     'By audit type:',
     ...report.byAuditType.map((row) => `- ${row.auditType}: opened ${row.opened}, closed ${row.closed}`),

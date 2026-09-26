@@ -6,6 +6,7 @@ exports.buildMonthlyReport = buildMonthlyReport;
 exports.monthlyReportSubject = monthlyReportSubject;
 exports.monthlyReportIntro = monthlyReportIntro;
 const analytics_1 = require("./analytics");
+const slaLabels_1 = require("./slaLabels");
 function dayKey(value) {
     const date = (0, analytics_1.toSafeDate)(value);
     return date ? date.toISOString().slice(0, 10) : null;
@@ -196,8 +197,12 @@ function monthlyReportIntro(report) {
         : net > 0
             ? `backlog +${net}`
             : `backlog −${Math.abs(net)}`;
-    const team = report.teamSlaOverall.avgDays == null ? 'Team SLA n/a' : `Team SLA ${report.teamSlaOverall.avgDays}d`;
-    const reviewer = report.reviewerSlaOverall.avgDays == null ? 'Reviewer SLA n/a' : `Reviewer SLA ${report.reviewerSlaOverall.avgDays}d`;
+    const team = report.teamSlaOverall.avgDays == null
+        ? `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} n/a`
+        : `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} ${report.teamSlaOverall.avgDays}d`;
+    const reviewer = report.reviewerSlaOverall.avgDays == null
+        ? `${slaLabels_1.COMPLIANCE_SLA_LABEL} n/a`
+        : `${slaLabels_1.COMPLIANCE_SLA_LABEL} ${report.reviewerSlaOverall.avgDays}d`;
     const breaches = report.topBreaches.length
         ? `${report.topBreaches.length} outside SLA`
         : 'no open SLA breaches';

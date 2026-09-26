@@ -1,5 +1,9 @@
 import * as XLSX from 'xlsx';
 import type { DashboardIssue, DashboardPayload } from '@/shared/dashboardContract';
+import {
+  COMPLIANCE_SLA_LABEL,
+  SRE_AUDIT_TEAM_SLA_LABEL,
+} from '@/shared/slaLabels';
 
 function sheetName(raw: string, used: Set<string>): string {
   let base = raw.replace(/[\\/?*[\]:]/g, ' ').replace(/\s+/g, ' ').trim() || 'Sheet';
@@ -34,8 +38,8 @@ function issueRows(issues: DashboardIssue[]) {
     Created: issue.created?.slice(0, 10) || '',
     Updated: issue.updated?.slice(0, 10) || '',
     Resolved: issue.resolved?.slice(0, 10) || '',
-    'Team SLA days': issue.teamSlaDays ?? '',
-    'Reviewer SLA days': issue.reviewerSlaDays ?? '',
+    [`${SRE_AUDIT_TEAM_SLA_LABEL} days`]: issue.teamSlaDays ?? '',
+    [`${COMPLIANCE_SLA_LABEL} days`]: issue.reviewerSlaDays ?? '',
   }));
 }
 
@@ -102,10 +106,10 @@ export function buildAuditWorkbook(payload: DashboardPayload, issues: DashboardI
       row.completionRate,
     ]),
     [],
-    ['Team SLA by audit type', 'Avg days', 'Count'],
+    [`${SRE_AUDIT_TEAM_SLA_LABEL} by audit type`, 'Avg days', 'Count'],
     ...(insights?.teamSlaByAuditType || []).map((row) => [row.auditType, row.avgDays, row.count]),
     [],
-    ['Reviewer SLA by audit type', 'Avg days', 'Count'],
+    [`${COMPLIANCE_SLA_LABEL} by audit type`, 'Avg days', 'Count'],
     ...(insights?.reviewerSlaByAuditType || []).map((row) => [row.auditType, row.avgDays, row.count]),
   ];
   XLSX.utils.book_append_sheet(wb, aoaToSheet(summaryRows), sheetName('Summary', usedNames));
@@ -135,10 +139,10 @@ export function buildAuditWorkbook(payload: DashboardPayload, issues: DashboardI
       [`Audit type: ${type}`],
       ['Tickets', typeIssues.length],
       ['Open', typeIssues.filter((issue) => !issue.resolved).length],
-      ['Team SLA avg (days)', teamSla?.avgDays ?? ''],
-      ['Team SLA samples', teamSla?.count ?? ''],
-      ['Reviewer SLA avg (days)', reviewerSla?.avgDays ?? ''],
-      ['Reviewer SLA samples', reviewerSla?.count ?? ''],
+      [`${SRE_AUDIT_TEAM_SLA_LABEL} avg (days)`, teamSla?.avgDays ?? ''],
+      [`${SRE_AUDIT_TEAM_SLA_LABEL} samples`, teamSla?.count ?? ''],
+      [`${COMPLIANCE_SLA_LABEL} avg (days)`, reviewerSla?.avgDays ?? ''],
+      [`${COMPLIANCE_SLA_LABEL} samples`, reviewerSla?.count ?? ''],
       [],
     ]);
     let nextRow = 8;

@@ -42,9 +42,24 @@ Reload is not a Percona sync. To persist a snapshot, enable the database and cal
 | Cycle time | First transition into an In Progress category → done. |
 | Lead time | Created → done. |
 | Throughput | Issues opened vs closed by calendar month (`2026-Jan` axis). Monthly throughput KPI averages the last six months of closures. |
-| WIP aging | Open *in-progress* issues only, bucketed 0–2d / 3–7d / 8–14d / 14d+. |
+| In-progress aging | Open *in-progress* issues only, bucketed 0–2d / 3–7d / 8–14d / 14d+. (Replaces the older “WIP aging” label.) |
+| **SRE Audit Team SLA** | Days from first **Approved** → first **Under Validation**. Default target 7 days. Over-target tickets appear under **SRE Audit Team SLA breaches**. |
+| **Compliance SLA** | Days from first **Under Validation** → **Done** / resolution. Default target 7 days. Over-target tickets appear under **Compliance SLA breaches**. |
 
 Date filters apply to created date, except when a sprint is selected (the sprint is the window).
+
+## Dashboard layout
+
+1. **Hero KPIs** — Total Jira's, Open Jira's, Under Validation Jira's, Done Jira's  
+2. **Secondary KPIs** — License / BU, Audit types, Applications, Monthly throughput  
+3. **Portfolio health** (status mix) + **Delivery rhythm** (monthly opened vs closed)  
+4. **Team load** (all assignees with open work) + **In-progress aging**  
+5. **Work by audit type** (volume chart, outside the collapsible audit section)  
+6. **Audit types** (collapsible) — stage completion, SRE Audit Team / Compliance SLA averages, **SRE Audit Team SLA breaches**, **Compliance SLA breaches** (scrollable tables)  
+7. **Velocity** + **Time in status**  
+8. **Issues** table — page sizes 10 / 25 / 50 / 100  
+
+Excel export from the UI uses the same audit-type workbook layout (Summary + one sheet per audit type).
 
 ## Features
 
@@ -53,9 +68,9 @@ Date filters apply to created date, except when a sprint is selected (the sprint
 - Scheduled sync and optional Jira webhook
 - Optional Percona XtraDB Cluster persistence and Redis cache
 - Paginated issue drill-down; `/metrics` does not return the full issue array
-- URL query filters (`projectKey`, `sprintId`, `issueType`, `startDate`, `endDate`)
+- URL query filters (`projectKey`, `sprintId`, `issueType`, `startDate`, `endDate`, License/BU, application, epic, label)
 - Prometheus text at `/api/v1/observability/metrics`
-- Monthly SRE Audit stakeholder email (`POST /api/v1/reports/monthly`) with opened/closed by audit type, SLAs, and breach lists
+- Weekly SRE Audit stakeholder email (Monday 09:00 Asia/Kolkata by default) with HTML charts and a month-scoped Excel attachment
 
 ## Quick start
 
@@ -182,15 +197,15 @@ See [`.env.example`](.env.example) for the full list. Important variables:
 
 Subject line: `SRE Audit Monthly Report — August 2026` (optional `· PROJECT`).
 
-The HTML mail includes a short narrative plus:
+Auto-send: every **Monday at 09:00** in `MONTHLY_REPORT_TIMEZONE` (default `Asia/Kolkata`), covering the **previous calendar month**.
 
-1. Opened / closed / net change / still open  
-2. On hold & under validation snapshot  
-3. Opened & closed **by audit type**, with team & reviewer SLA averages for that month  
-4. Top applications  
-5. Open tickets outside usual team/reviewer SLA  
+The HTML mail includes a short 1–2 line summary plus:
 
-An Excel workbook (`.xlsx`) is attached using the **same layout as the dashboard export** (Summary + one sheet per audit type with tickets), scoped to issues opened or closed in that month.
+1. KPI cards (opened / closed / net / still open / on hold / under validation / SLA averages)  
+2. Colorful HTML bar charts — overall throughput, opened/closed by audit type, top applications, **SRE Audit Team SLA** and **Compliance SLA** by audit type, open-work snapshot  
+3. Outside-SLA ticket list (**SRE Audit Team SLA breaches** and **Compliance SLA breaches**)  
+
+An Excel workbook (`.xlsx`) is attached using the **same layout as the dashboard export** (Summary + one sheet per audit type with tickets), scoped to issues opened or closed in that month. Column headers use the SRE Audit Team / Compliance SLA names.
 
 **Send immediately (recommended on VM / Podman):**
 

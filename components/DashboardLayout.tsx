@@ -112,6 +112,7 @@ export function DashboardLayout() {
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [docsUrl, setDocsUrl] = useState('');
   const appliedDefaultEpic = useRef(false);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(filters);
@@ -131,6 +132,18 @@ export function DashboardLayout() {
     setFilters(fromUrl);
     setDraft(fromUrl);
   }, [urlQuery]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/docs-url', { signal: controller.signal, cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const payload = await response.json() as { docsUrl?: string };
+        if (!controller.signal.aborted) setDocsUrl((payload.docsUrl || '').trim());
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -281,9 +294,13 @@ export function DashboardLayout() {
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-[11px] font-semibold tracking-wide text-white dark:bg-white dark:text-slate-950">
-                    JA
-                  </div>
+                  <img
+                    src="/phonepe-logo.png"
+                    alt="PhonePe"
+                    width={40}
+                    height={40}
+                    className="h-10 w-10 rounded-xl object-cover shadow-sm"
+                  />
                   <div>
                     <p className="text-sm font-semibold tracking-tight">Jira Analytics</p>
                     <p className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
@@ -293,32 +310,26 @@ export function DashboardLayout() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  {(() => {
-                    const docsUrl = (process.env.NEXT_PUBLIC_GITLAB_URL || process.env.NEXT_PUBLIC_DOCS_URL || '').trim();
-                    if (docsUrl) {
-                      return (
-                        <a
-                          href={docsUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Documentation / GitLab"
-                          aria-label="Open documentation on GitLab"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/70 text-slate-700 transition hover:border-cyan-400/60 hover:text-cyan-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:text-cyan-300"
-                        >
-                          <BookOpen className="h-4 w-4" />
-                        </a>
-                      );
-                    }
-                    return (
-                      <span
-                        title="Set NEXT_PUBLIC_GITLAB_URL in .env.local, then restart Next.js"
-                        aria-label="Documentation link not configured"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-dashed border-slate-300/80 bg-white/40 text-slate-400 dark:border-white/15 dark:bg-white/5 dark:text-slate-500"
-                      >
-                        <BookOpen className="h-4 w-4" />
-                      </span>
-                    );
-                  })()}
+                  {docsUrl ? (
+                    <a
+                      href={docsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Documentation"
+                      aria-label="Open documentation"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/70 text-slate-700 transition hover:border-cyan-400/60 hover:text-cyan-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:text-cyan-300"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                    </a>
+                  ) : (
+                    <span
+                      title="Set NEXT_PUBLIC_GITLAB_URL or NEXT_PUBLIC_GITHUB_URL in .env.local, then restart the app"
+                      aria-label="Documentation link not configured"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-dashed border-slate-300/80 bg-white/40 text-slate-400 dark:border-white/15 dark:bg-white/5 dark:text-slate-500"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => { void exportExcel(); }}

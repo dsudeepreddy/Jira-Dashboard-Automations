@@ -33,9 +33,9 @@ function detailLink(dashboardUrl, hash) {
 function metricCard(label, value, accent, tint) {
     return `
     <td style="padding:6px;width:25%;vertical-align:top;">
-      <div style="border:1px solid ${accent}33;border-radius:14px;padding:14px 12px;background:${tint};">
-        <div style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:${accent};font-weight:700;">${escapeHtml(label)}</div>
-        <div style="margin-top:8px;font-size:24px;font-weight:700;color:#0f172a;">${escapeHtml(value)}</div>
+      <div style="border:1px solid ${accent}33;border-radius:14px;padding:14px 12px;background:${tint};min-height:96px;height:96px;box-sizing:border-box;">
+        <div style="font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:${accent};font-weight:700;line-height:1.3;height:26px;overflow:hidden;">${escapeHtml(label)}</div>
+        <div style="margin-top:12px;font-size:24px;font-weight:700;color:#0f172a;line-height:1;">${escapeHtml(value)}</div>
       </div>
     </td>`;
 }
@@ -69,8 +69,9 @@ function dualSeriesChart(rows, options) {
     const body = usable.map((row) => {
         const primary = row.primary;
         const secondary = row.secondary;
-        const primaryPct = Math.max(primary ? 4 : 0, Math.round(((primary || 0) / max) * 100));
-        const secondaryPct = Math.max(secondary ? 4 : 0, Math.round(((secondary || 0) / max) * 100));
+        // Always show a small block for zero/positive values (never an empty bar).
+        const primaryPct = primary == null ? 0 : Math.max(6, Math.round((Number(primary) / max) * 100) || 6);
+        const secondaryPct = secondary == null ? 0 : Math.max(6, Math.round((Number(secondary) / max) * 100) || 6);
         const tip = `${options.primaryLabel}: ${primary == null ? 'n/a' : `${primary}${suffix}`} · ${options.secondaryLabel}: ${secondary == null ? 'n/a' : `${secondary}${suffix}`}`;
         return `
       <tr>
@@ -78,13 +79,13 @@ function dualSeriesChart(rows, options) {
         <td style="padding:8px 0;width:74%;" title="${escapeHtml(tip)}">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:4px;">
             <tr>
-              <td style="width:${primaryPct}%;background:${options.primaryColor};height:10px;border-radius:5px;" title="${escapeHtml(`${options.primaryLabel}: ${primary == null ? 'n/a' : `${primary}${suffix}`}`)}"></td>
+              <td style="width:${primaryPct}%;background:${options.primaryColor};height:10px;border-radius:5px;opacity:${primary === 0 ? '0.45' : '1'};" title="${escapeHtml(`${options.primaryLabel}: ${primary == null ? 'n/a' : `${primary}${suffix}`}`)}"></td>
               <td style="padding-left:8px;font-size:11px;color:${options.primaryColor};white-space:nowrap;">${primary == null ? '—' : `${primary}${suffix}`}</td>
             </tr>
           </table>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0;">
             <tr>
-              <td style="width:${secondaryPct}%;background:${options.secondaryColor};height:10px;border-radius:5px;" title="${escapeHtml(`${options.secondaryLabel}: ${secondary == null ? 'n/a' : `${secondary}${suffix}`}`)}"></td>
+              <td style="width:${secondaryPct}%;background:${options.secondaryColor};height:10px;border-radius:5px;opacity:${secondary === 0 ? '0.45' : '1'};" title="${escapeHtml(`${options.secondaryLabel}: ${secondary == null ? 'n/a' : `${secondary}${suffix}`}`)}"></td>
               <td style="padding-left:8px;font-size:11px;color:${options.secondaryColor};white-space:nowrap;">${secondary == null ? '—' : `${secondary}${suffix}`}</td>
             </tr>
           </table>
@@ -210,8 +211,8 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
                   <tr>
                     ${metricCard('Total Applications', String(report.totals.uniqueApplications), COLORS.apps, '#f0f9ff')}
                     ${metricCard('Audit Types', String(report.totals.uniqueAuditTypes), COLORS.types, '#eef2ff')}
-                    ${metricCard(`${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} avg`, report.teamSlaOverall.avgDays == null ? '—' : `${report.teamSlaOverall.avgDays}d`, COLORS.team, '#fffbeb')}
-                    ${metricCard(`${slaLabels_1.COMPLIANCE_SLA_LABEL} avg`, report.reviewerSlaOverall.avgDays == null ? '—' : `${report.reviewerSlaOverall.avgDays}d`, COLORS.reviewer, '#ecfdf5')}
+                    ${metricCard('Team SLA avg', report.teamSlaOverall.avgDays == null ? '—' : `${report.teamSlaOverall.avgDays}d`, COLORS.team, '#fffbeb')}
+                    ${metricCard('Compliance SLA avg', report.reviewerSlaOverall.avgDays == null ? '—' : `${report.reviewerSlaOverall.avgDays}d`, COLORS.reviewer, '#ecfdf5')}
                   </tr>
                 </table>
               </td>

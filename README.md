@@ -194,7 +194,7 @@ See [`.env.example`](.env.example) for the full list. Important variables:
 | `MONTHLY_REPORT_WEEKDAY` / `HOUR` / `TIMEZONE` | Schedule slot (default Mon 09:00 IST). Retries each minute during that hour if send fails. |
 | `MONTHLY_REPORT_DASHBOARD_URL` | Optional “Open Dashboard” link in the email (IP hosts are rewritten via `DASHBOARD_PUBLIC_HOSTNAME` or `hostname -a`) |
 | `DASHBOARD_PUBLIC_HOSTNAME` | Preferred hostname when the dashboard URL would otherwise show an IP |
-| `NEXT_PUBLIC_GITLAB_URL` | Optional docs icon in the dashboard header (opens your GitLab project page) |
+| `NEXT_PUBLIC_GITLAB_URL` / `NEXT_PUBLIC_GITHUB_URL` / `NEXT_PUBLIC_DOCS_URL` | Docs icon in the dashboard header (runtime via `/api/docs-url`; also accepts `GITLAB_URL` / `GITHUB_URL`) |
 
 ### Monthly report
 

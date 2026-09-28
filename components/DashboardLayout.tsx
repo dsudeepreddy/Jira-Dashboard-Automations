@@ -117,7 +117,7 @@ export function DashboardLayout() {
   const dirty = JSON.stringify(draft) !== JSON.stringify(filters);
   const urlQuery = searchParams.toString();
   const invalidRange = Boolean(draft.startDate && draft.endDate && draft.startDate > draft.endDate);
-  const dateSummary = [filters.startDate, filters.endDate].filter(Boolean).join(' → ') || 'Any created date';
+  const dateSummary = [filters.startDate, filters.endDate].filter(Boolean).join(' → ') || 'Any created date in selected FY';
 
   const commitFilters = useCallback((next: Filters) => {
     setFilters(next);
@@ -293,18 +293,32 @@ export function DashboardLayout() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  {process.env.NEXT_PUBLIC_GITLAB_URL ? (
-                    <a
-                      href={process.env.NEXT_PUBLIC_GITLAB_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Documentation / GitLab"
-                      aria-label="Open documentation on GitLab"
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/70 text-slate-700 transition hover:border-cyan-400/60 hover:text-cyan-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:text-cyan-300"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                    </a>
-                  ) : null}
+                  {(() => {
+                    const docsUrl = (process.env.NEXT_PUBLIC_GITLAB_URL || process.env.NEXT_PUBLIC_DOCS_URL || '').trim();
+                    if (docsUrl) {
+                      return (
+                        <a
+                          href={docsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Documentation / GitLab"
+                          aria-label="Open documentation on GitLab"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/70 text-slate-700 transition hover:border-cyan-400/60 hover:text-cyan-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:text-cyan-300"
+                        >
+                          <BookOpen className="h-4 w-4" />
+                        </a>
+                      );
+                    }
+                    return (
+                      <span
+                        title="Set NEXT_PUBLIC_GITLAB_URL in .env.local, then restart Next.js"
+                        aria-label="Documentation link not configured"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-dashed border-slate-300/80 bg-white/40 text-slate-400 dark:border-white/15 dark:bg-white/5 dark:text-slate-500"
+                      >
+                        <BookOpen className="h-4 w-4" />
+                      </span>
+                    );
+                  })()}
                   <button
                     type="button"
                     onClick={() => { void exportExcel(); }}
@@ -471,7 +485,7 @@ export function DashboardLayout() {
             </p>
           </div>
           <GlassCard spotlight={false} className="px-5 py-4">
-            <p className="eyebrow">Active filter</p>
+            <p className="eyebrow">Tickets</p>
             <p className="mt-2 text-lg font-semibold">
               {(() => {
                 const selectedEpic = data?.epics?.find((epic) => epic.key === filters.epicKey);
@@ -480,11 +494,11 @@ export function DashboardLayout() {
                 return filters.epicKey || 'All FY epics';
               })()}
             </p>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              {filters.projectKey || 'All projects'}
-              {filters.licenseBu ? ` · ${filters.licenseBu}` : ''}
-              {filters.application ? ` · ${filters.application}` : ''}
-            </p>
+            {(filters.licenseBu || filters.application) ? (
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                {[filters.licenseBu, filters.application].filter(Boolean).join(' · ')}
+              </p>
+            ) : null}
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{dateSummary}</p>
           </GlassCard>
         </section>

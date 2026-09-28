@@ -43,8 +43,8 @@ Reload is not a Percona sync. To persist a snapshot, enable the database and cal
 | Lead time | Created → done. |
 | Throughput | Issues opened vs closed by calendar month (`2026-Jan` axis). Monthly throughput KPI averages the last six months of closures. |
 | In-progress aging | Open *in-progress* issues only, bucketed 0–2d / 3–7d / 8–14d / 14d+. (Replaces the older “WIP aging” label.) |
-| **SRE Audit Team SLA** | Days from first **Approved** → first **Under Validation**. Default target 7 days. Over-target tickets appear under **SRE Audit Team SLA breaches**. |
-| **Compliance SLA** | Days from first **Under Validation** → **Done** / resolution. Default target 7 days. Over-target tickets appear under **Compliance SLA breaches**. |
+| **SRE Audit Team SLA** | Business days from first **Approved** → first **Under Validation** (Sat/Sun excluded). Default target 7 days. Over-target tickets appear under **SRE Audit Team SLA breaches**. |
+| **Compliance SLA** | Business days from first **Under Validation** → **Done** / resolution (Sat/Sun excluded). Default target 7 days. Over-target tickets appear under **Compliance SLA breaches**. |
 
 Date filters apply to created date, except when a sprint is selected (the sprint is the window).
 

@@ -145,6 +145,22 @@ body {
     -webkit-background-clip: text;
     background-clip: text;
   }
+
+  .expand-hop {
+    animation: expand-hop 1.15s ease-in-out infinite;
+  }
+
+  @keyframes expand-hop {
+    0%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-3px); }
+    60% { transform: translateY(1px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .expand-hop {
+      animation: none;
+    }
+  }
 }
 
 .ambient-root {

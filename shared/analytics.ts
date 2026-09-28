@@ -188,6 +188,28 @@ export function daysBetween(start: Date, end: Date): number {
   return Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+/**
+ * Elapsed weekdays only (Sat/Sun excluded). Used for SRE Audit Team / Compliance SLA.
+ * Walks UTC calendar days so results stay stable across server timezones.
+ */
+export function businessDaysBetween(start: Date, end: Date): number {
+  if (end.getTime() <= start.getTime()) return 0;
+  const msDay = 1000 * 60 * 60 * 24;
+  let total = 0;
+  let cursor = start.getTime();
+  while (cursor < end.getTime()) {
+    const day = new Date(cursor);
+    const dow = day.getUTCDay();
+    const nextMidnight = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + 1);
+    const segmentEnd = Math.min(nextMidnight, end.getTime());
+    if (dow !== 0 && dow !== 6) {
+      total += (segmentEnd - cursor) / msDay;
+    }
+    cursor = segmentEnd;
+  }
+  return Number(total.toFixed(2));
+}
+
 export function ageBucket(days: number): string {
   if (days <= 2) return '0–2d';
   if (days <= 7) return '3–7d';
@@ -307,10 +329,10 @@ export function deriveAuditSlaTimestamps(
   if (!doneAt && isAuditDoneStatus(currentStatus)) doneAt = resolved || created;
 
   const teamSlaDays = approvedAt && underValidationAt
-    ? Number(daysBetween(new Date(approvedAt), new Date(underValidationAt)).toFixed(2))
+    ? Number(businessDaysBetween(new Date(approvedAt), new Date(underValidationAt)).toFixed(2))
     : null;
   const reviewerSlaDays = underValidationAt && doneAt
-    ? Number(daysBetween(new Date(underValidationAt), new Date(doneAt)).toFixed(2))
+    ? Number(businessDaysBetween(new Date(underValidationAt), new Date(doneAt)).toFixed(2))
     : null;
 
   return {
@@ -546,7 +568,7 @@ function collectSlaBreaches(
     if (!options.isInFlight(issue)) return;
     const start = toSafeDate(options.inFlightStartOf(issue));
     if (!start) return;
-    const elapsed = daysBetween(start, options.now);
+    const elapsed = businessDaysBetween(start, options.now);
     if (elapsed <= options.targetDays) return;
     breaches.push({
       key: issue.key,

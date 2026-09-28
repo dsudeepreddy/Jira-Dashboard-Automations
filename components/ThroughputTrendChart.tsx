@@ -20,16 +20,30 @@ export function ThroughputTrendChart({ data }: { data: ThroughputDatum[] }) {
       hint="Tickets opened vs closed by calendar month (axis: YYYY-Mon)."
       delay={0.24}
     >
-      <div className="h-72">
+      <div className="flex h-72 flex-col">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} barGap={4} barCategoryGap="18%" margin={{ top: 8, right: 8, left: 4, bottom: 4 }}>
+          <BarChart
+            data={chartData}
+            barGap={6}
+            barCategoryGap="22%"
+            margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
+          >
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-slate-300/40 dark:text-white/10" />
-            <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={48} />
+            <XAxis
+              dataKey="period"
+              tickLine={false}
+              axisLine={false}
+              tick={{ fontSize: 11 }}
+              interval={0}
+              angle={-25}
+              textAnchor="end"
+              height={52}
+            />
             <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} width={36} />
             <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
-            <Legend wrapperStyle={{ fontSize: 12, paddingTop: 4 }} />
-            <Bar dataKey="opened" name="Opened" fill="#0891b2" radius={[6, 6, 0, 0]} animationDuration={900} maxBarSize={36} />
-            <Bar dataKey="closed" name="Closed" fill="#7c3aed" radius={[6, 6, 0, 0]} animationDuration={900} maxBarSize={36} />
+            <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 12, paddingBottom: 8 }} />
+            <Bar dataKey="opened" name="Opened" fill="#0891b2" radius={[6, 6, 0, 0]} animationDuration={900} maxBarSize={32} minPointSize={3} />
+            <Bar dataKey="closed" name="Closed" fill="#7c3aed" radius={[6, 6, 0, 0]} animationDuration={900} maxBarSize={32} minPointSize={3} />
           </BarChart>
         </ResponsiveContainer>
       </div>

@@ -280,8 +280,8 @@ Status categories: Jira `statusCategory.key` when present (`new` | `indeterminat
 | Assignee load | All assignees with open work; stacked by current status |
 | Time in status | Open issues; average days since last status change/updated/created; top 8 |
 | Blocked | `flagged` or status matches `/block/i` |
-| SRE Audit Team SLA | Approved → Under Validation (default target 7d). Breaches listed as **SRE Audit Team SLA breaches** |
-| Compliance SLA | Under Validation → Done (default target 7d). Breaches listed as **Compliance SLA breaches** |
+| SRE Audit Team SLA | Business days (Mon–Fri) Approved → Under Validation (default target 7d). Breaches listed as **SRE Audit Team SLA breaches** |
+| Compliance SLA | Business days (Mon–Fri) Under Validation → Done (default target 7d). Breaches listed as **Compliance SLA breaches** |
 
 Filters: project, type, sprint IDs. If `sprintId` is set, **created date filters are ignored** (sprint is the window).
 

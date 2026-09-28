@@ -10,6 +10,7 @@ exports.shiftIsoDate = shiftIsoDate;
 exports.isInCreatedDateRange = isInCreatedDateRange;
 exports.createdDateJql = createdDateJql;
 exports.daysBetween = daysBetween;
+exports.businessDaysBetween = businessDaysBetween;
 exports.ageBucket = ageBucket;
 exports.categoryForStatus = categoryForStatus;
 exports.isDoneIssue = isDoneIssue;
@@ -139,6 +140,28 @@ function createdDateJql(startDate, endDate) {
 function daysBetween(start, end) {
     return Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 }
+/**
+ * Elapsed weekdays only (Sat/Sun excluded). Used for SRE Audit Team / Compliance SLA.
+ * Walks UTC calendar days so results stay stable across server timezones.
+ */
+function businessDaysBetween(start, end) {
+    if (end.getTime() <= start.getTime())
+        return 0;
+    const msDay = 1000 * 60 * 60 * 24;
+    let total = 0;
+    let cursor = start.getTime();
+    while (cursor < end.getTime()) {
+        const day = new Date(cursor);
+        const dow = day.getUTCDay();
+        const nextMidnight = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + 1);
+        const segmentEnd = Math.min(nextMidnight, end.getTime());
+        if (dow !== 0 && dow !== 6) {
+            total += (segmentEnd - cursor) / msDay;
+        }
+        cursor = segmentEnd;
+    }
+    return Number(total.toFixed(2));
+}
 function ageBucket(days) {
     if (days <= 2)
         return '0–2d';
@@ -250,10 +273,10 @@ function deriveAuditSlaTimestamps(created, resolved, currentStatus, histories, n
     if (!doneAt && isAuditDoneStatus(currentStatus))
         doneAt = resolved || created;
     const teamSlaDays = approvedAt && underValidationAt
-        ? Number(daysBetween(new Date(approvedAt), new Date(underValidationAt)).toFixed(2))
+        ? Number(businessDaysBetween(new Date(approvedAt), new Date(underValidationAt)).toFixed(2))
         : null;
     const reviewerSlaDays = underValidationAt && doneAt
-        ? Number(daysBetween(new Date(underValidationAt), new Date(doneAt)).toFixed(2))
+        ? Number(businessDaysBetween(new Date(underValidationAt), new Date(doneAt)).toFixed(2))
         : null;
     return {
         approvedAt,
@@ -461,7 +484,7 @@ function collectSlaBreaches(issues, options) {
         const start = toSafeDate(options.inFlightStartOf(issue));
         if (!start)
             return;
-        const elapsed = daysBetween(start, options.now);
+        const elapsed = businessDaysBetween(start, options.now);
         if (elapsed <= options.targetDays)
             return;
         breaches.push({

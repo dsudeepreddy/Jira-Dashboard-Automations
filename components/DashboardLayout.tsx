@@ -1,17 +1,18 @@
 'use client';
 
-import { AlertTriangle, AppWindow, BarChart3, Building2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ClipboardList, Download, Filter, FolderKanban, Activity, CheckCircle2, ClipboardCheck, TrendingUp } from 'lucide-react';
+import { AlertTriangle, AppWindow, Building2, ChevronLeft, ChevronRight, ClipboardList, Download, Filter, FolderKanban, Activity, CheckCircle2, ClipboardCheck, TrendingUp } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardIssue, DashboardPayload, ExportIssuesPayload, IssuePagePayload } from '@/shared/dashboardContract';
 import { atlassianIssueUrl, UNTAGGED_LABEL } from '@/shared/dashboardContract';
 import { downloadAuditWorkbook } from '@/lib/exportAuditWorkbook';
 import { AmbientBackground } from './AmbientBackground';
+import { ExpandHint } from './ExpandHint';
 import { GlassCard } from './GlassCard';
 import { MetricCard } from './MetricCard';
 import { StatusDistributionChart } from './StatusDistributionChart';
 import { ThroughputTrendChart } from './ThroughputTrendChart';
-import { AssigneeLoadChart, VelocityChart, WipAgingChart } from './FlowCharts';
+import { AssigneeLoadChart, WipAgingChart } from './FlowCharts';
 import { FieldBarChart } from './FieldCharts';
 import { InsightsView } from './InsightsView';
 import { ThemeToggle } from './ThemeToggle';
@@ -61,6 +62,17 @@ function initials(name?: string | null) {
   return name.split(' ').slice(0, 2).map((part) => part[0]).join('').toUpperCase();
 }
 
+const FY_ACTIVE_FILTER_LABEL = 'SRE Audit Ticket Apr 2026 - Mar 2027';
+
+function isFy2627Epic(epic: { key: string; name: string }): boolean {
+  const haystack = `${epic.key} ${epic.name}`.toLowerCase();
+  return /2026\s*[-–\/]\s*27|fy\s*26|fy26|apr(?:il)?\s*2026|2026\s*[-–\/]\s*2027|mar(?:ch)?\s*2027/.test(haystack);
+}
+
+function findDefaultFyEpic(epics: Array<{ key: string; name: string }>): { key: string; name: string } | null {
+  return epics.find(isFy2627Epic) || null;
+}
+
 function filtersFromParams(params: URLSearchParams): Filters {
   return {
     projectKey: params.get('projectKey') || '',
@@ -95,11 +107,12 @@ export function DashboardLayout() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [issuePage, setIssuePage] = useState(1);
-  const [issuePageSize, setIssuePageSize] = useState(25);
+  const [issuePageSize, setIssuePageSize] = useState(10);
   const [issueSort, setIssueSort] = useState('updated-desc');
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const appliedDefaultEpic = useRef(false);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(filters);
   const urlQuery = searchParams.toString();
@@ -141,6 +154,18 @@ export function DashboardLayout() {
   }, [filters]);
 
   useEffect(() => setIssuePage(1), [filters, issuePageSize, issueSort]);
+
+  useEffect(() => {
+    if (!data?.epics?.length || appliedDefaultEpic.current) return;
+    if (filters.epicKey) {
+      appliedDefaultEpic.current = true;
+      return;
+    }
+    const fyEpic = findDefaultFyEpic(data.epics);
+    if (!fyEpic) return;
+    appliedDefaultEpic.current = true;
+    commitFilters({ ...filters, epicKey: fyEpic.key });
+  }, [data?.epics, filters, commitFilters]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -288,7 +313,7 @@ export function DashboardLayout() {
                 <button
                   type="button"
                   onClick={() => setIsFiltersExpanded((prev) => !prev)}
-                  className="flex w-full items-center justify-between text-sm font-medium text-slate-700 transition hover:text-cyan-600 dark:text-slate-200 dark:hover:text-cyan-400"
+                  className="flex w-full items-center justify-between gap-3 rounded-2xl px-1 py-1 text-sm font-medium text-slate-700 transition hover:text-cyan-600 dark:text-slate-200 dark:hover:text-cyan-400"
                 >
                   <div className="flex items-center gap-2">
                     <Filter className="h-4 w-4 text-cyan-500" />
@@ -299,10 +324,7 @@ export function DashboardLayout() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                    <span>{isFiltersExpanded ? 'Collapse' : 'Expand'}</span>
-                    {isFiltersExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </div>
+                  <ExpandHint expanded={isFiltersExpanded} />
                 </button>
               </div>
               {isFiltersExpanded && (
@@ -406,7 +428,17 @@ export function DashboardLayout() {
                       >
                         {loading && data ? 'Applying…' : 'Apply'}
                       </button>
-                      <button type="button" onClick={() => commitFilters(EMPTY_FILTERS)} className="control font-medium text-slate-600 dark:text-slate-300">Reset</button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const fyEpic = findDefaultFyEpic(data?.epics || []);
+                          appliedDefaultEpic.current = Boolean(fyEpic);
+                          commitFilters(fyEpic ? { ...EMPTY_FILTERS, epicKey: fyEpic.key } : EMPTY_FILTERS);
+                        }}
+                        className="control font-medium text-slate-600 dark:text-slate-300"
+                      >
+                        Reset
+                      </button>
                     </div>
                   </div>
                   {invalidRange ? <p className="text-xs text-amber-700 dark:text-amber-300">Created from must be on or before Created to.</p> : null}
@@ -420,30 +452,26 @@ export function DashboardLayout() {
           <div>
             <p className="eyebrow mb-3">SRE audit</p>
             <h1 className="text-4xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-5xl">
-              Audit work, <span className="text-cyan-600 dark:text-cyan-300">by FY.</span>
+              SRE Audit Work, <span className="text-cyan-600 dark:text-cyan-300">by FY.</span>
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-              Project-level flow metrics by default. Open View more to pick an audit type and see stage completion, team/reviewer SLAs, and out-of-SLA tickets.
+              Project-level flow metrics by default. Expand Audit types to pick an audit type and see stage completion, SLAs, and out-of-SLA tickets.
             </p>
           </div>
           <GlassCard spotlight={false} className="px-5 py-4">
             <p className="eyebrow">Active filter</p>
             <p className="mt-2 text-lg font-semibold">
+              {(() => {
+                const selectedEpic = data?.epics?.find((epic) => epic.key === filters.epicKey);
+                if (selectedEpic && isFy2627Epic(selectedEpic)) return FY_ACTIVE_FILTER_LABEL;
+                if (selectedEpic) return selectedEpic.name;
+                return filters.epicKey || 'All FY epics';
+              })()}
+            </p>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
               {filters.projectKey || 'All projects'}
-              <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
-              {filters.epicKey ? data?.epics?.find((epic) => epic.key === filters.epicKey)?.name || filters.epicKey : 'All FY epics'}
-              {filters.licenseBu ? (
-                <>
-                  <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
-                  {filters.licenseBu}
-                </>
-              ) : null}
-              {filters.application ? (
-                <>
-                  <span className="mx-2 text-slate-300 dark:text-white/20">/</span>
-                  {filters.application}
-                </>
-              ) : null}
+              {filters.licenseBu ? ` · ${filters.licenseBu}` : ''}
+              {filters.application ? ` · ${filters.application}` : ''}
             </p>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{dateSummary}</p>
           </GlassCard>
@@ -506,27 +534,6 @@ export function DashboardLayout() {
               auditInsights={data.metrics.auditInsights}
               auditTypeOptions={data.auditTypes}
             />
-
-            <section className="grid gap-5 xl:grid-cols-2 xl:items-stretch">
-              <VelocityChart data={data.metrics.velocityTrend} basis={data.metrics.velocityBasis} />
-              <GlassCard className="h-full p-5">
-                <div className="mb-5 flex items-center justify-between">
-                  <div>
-                    <p className="eyebrow">Time in status</p>
-                    <h2 className="section-title">Open work dwell</h2>
-                  </div>
-                  <BarChart3 className="h-5 w-5 text-cyan-500" />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {data.metrics.timeInStatus.length ? data.metrics.timeInStatus.map((item) => (
-                    <div key={item.status} className="rounded-2xl border border-slate-200/70 bg-white/50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{item.status}</p>
-                      <p className="mt-2 numeric text-xl font-medium">{item.avgDays}d <span className="text-xs font-medium text-slate-500">· {item.count}</span></p>
-                    </div>
-                  )) : <p className="text-sm text-slate-500">No open issues in the current filter.</p>}
-                </div>
-              </GlassCard>
-            </section>
 
             <GlassCard className="p-5">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">

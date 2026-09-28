@@ -1,6 +1,6 @@
 'use client';
 
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { AssigneeLoadRow } from '@/shared/dashboardContract';
 import { ChartPanel, ChartTooltip } from './ChartShell';
 
@@ -52,7 +52,7 @@ export function VelocityChart({
 
 export function WipAgingChart({ data }: { data: Array<{ bucket: string; count: number }> }) {
   return (
-    <ChartPanel className="h-full" eyebrow="Flow risk" title="In-progress aging" hint="In-progress issues by age, not the full backlog." delay={0.34}>
+    <ChartPanel className="h-full" eyebrow="Flow risk" title="In-progress aging" hint="In-progress issues by days." delay={0.34}>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 4 }}>
@@ -66,7 +66,7 @@ export function WipAgingChart({ data }: { data: Array<{ bucket: string; count: n
             <XAxis dataKey="bucket" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
             <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} width={32} />
             <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
-            <Bar dataKey="count" name="In progress" fill="url(#wip-bar)" radius={[8, 8, 0, 0]} animationDuration={1200} />
+            <Bar dataKey="count" name="In progress" fill="url(#wip-bar)" radius={[8, 8, 0, 0]} animationDuration={1200} minPointSize={3} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -160,17 +160,35 @@ export function AssigneeLoadChart({ data }: { data: AssigneeLoadRow[] }) {
                 <YAxis type="category" dataKey="name" width={148} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={0} />
                 <Tooltip content={<AssigneeStageTooltip rows={data} />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                {statuses.map(([status, color], index) => (
-                  <Bar
-                    key={status}
-                    dataKey={status}
-                    stackId="stages"
-                    name={status}
-                    fill={color}
-                    radius={index === statuses.length - 1 ? [0, 8, 8, 0] : [0, 0, 0, 0]}
-                    animationDuration={1000}
-                  />
-                ))}
+                {statuses.map(([status, color], index) => {
+                  const isFirst = index === 0;
+                  const isLast = index === statuses.length - 1;
+                  const radius: [number, number, number, number] = isFirst && isLast
+                    ? [8, 8, 8, 8]
+                    : isFirst
+                      ? [8, 0, 0, 8]
+                      : isLast
+                        ? [0, 8, 8, 0]
+                        : [0, 0, 0, 0];
+                  return (
+                    <Bar
+                      key={status}
+                      dataKey={status}
+                      stackId="stages"
+                      name={status}
+                      fill={color}
+                      radius={radius}
+                      animationDuration={1000}
+                    >
+                      {chartData.map((entry) => (
+                        <Cell
+                          key={`${entry.name}-${status}`}
+                          fill={entry.name === 'Unassigned' ? '#ef4444' : color}
+                        />
+                      ))}
+                    </Bar>
+                  );
+                })}
               </BarChart>
             </ResponsiveContainer>
           ) : (

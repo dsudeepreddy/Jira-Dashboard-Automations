@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { AuditInsights, SlaBreachTicket } from '@/shared/dashboardContract';
 import { atlassianIssueUrl } from '@/shared/dashboardContract';
@@ -12,6 +11,7 @@ import {
   SRE_AUDIT_TEAM_SLA_LABEL,
 } from '@/shared/slaLabels';
 import { ChartPanel, ChartTooltip } from './ChartShell';
+import { ExpandHint } from './ExpandHint';
 import { ValidationTimeBarChart } from './FieldCharts';
 import { GlassCard } from './GlassCard';
 import { StatusDistributionChart } from './StatusDistributionChart';
@@ -139,13 +139,13 @@ export function InsightsView({
         <button
           type="button"
           onClick={() => setExpanded((open) => !open)}
-          className="flex items-center gap-2 text-left"
+          className="flex w-full items-center justify-between gap-3 text-left sm:w-auto"
         >
           <div>
             <p className="eyebrow">Audit types</p>
             <h2 className="section-title">Workflow, SLAs & breaches</h2>
           </div>
-          {expanded ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
+          <ExpandHint expanded={expanded} />
         </button>
         {expanded ? (
           <label className="flex flex-col gap-1 text-xs text-slate-500 dark:text-slate-400">
@@ -207,7 +207,7 @@ export function InsightsView({
                   <p className="eyebrow">{SRE_AUDIT_TEAM_SLA_LABEL}</p>
                   <h2 className="section-title">Approved → Under Validation</h2>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Average days from first Approved transition to first Under Validation for {selectedAuditType}.
+                    Average business days (Mon–Fri) from first Approved transition to first Under Validation for {selectedAuditType}.
                   </p>
                   <p className="numeric mt-4 text-4xl font-medium tracking-tight">
                     {teamSla ? teamSla.avgDays.toFixed(1) : '—'}
@@ -222,7 +222,7 @@ export function InsightsView({
                   <p className="eyebrow">{COMPLIANCE_SLA_LABEL}</p>
                   <h2 className="section-title">Under Validation → Done</h2>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Average days from first Under Validation transition to Done / resolution for {selectedAuditType}.
+                    Average business days (Mon–Fri) from first Under Validation transition to Done / resolution for {selectedAuditType}.
                   </p>
                   <p className="numeric mt-4 text-4xl font-medium tracking-tight">
                     {reviewerSla ? reviewerSla.avgDays.toFixed(1) : '—'}
@@ -241,14 +241,14 @@ export function InsightsView({
                 data={insights.teamSlaByAuditType}
                 eyebrow={SRE_AUDIT_TEAM_SLA_LABEL}
                 title="Approved → Under Validation by audit type"
-                hint="Average days from first Approved to first Under Validation. Select an audit type for stage and breach detail."
+                hint="Average business days (Mon–Fri) from first Approved to first Under Validation. Select an audit type for stage and breach detail."
                 emptyLabel={`No completed ${SRE_AUDIT_TEAM_SLA_LABEL}s yet. Sync with changelog to populate.`}
               />
               <ValidationTimeBarChart
                 data={insights.reviewerSlaByAuditType}
                 eyebrow={COMPLIANCE_SLA_LABEL}
                 title="Under Validation → Done by audit type"
-                hint="Average days from first Under Validation to Done. Select an audit type for stage and breach detail."
+                hint="Average business days (Mon–Fri) from first Under Validation to Done. Select an audit type for stage and breach detail."
                 emptyLabel={`No completed ${COMPLIANCE_SLA_LABEL}s yet. Sync with changelog to populate.`}
               />
             </div>
@@ -257,13 +257,13 @@ export function InsightsView({
           <div className="grid gap-5 xl:grid-cols-2">
             <BreachTable
               title={selectedAuditType ? `${SRE_AUDIT_TEAM_SLA_BREACHES_LABEL} · ${selectedAuditType}` : SRE_AUDIT_TEAM_SLA_BREACHES_LABEL}
-              hint={`Tickets over the usual ${SRE_AUDIT_TEAM_SLA_LABEL} of ${insights.teamSlaTargetDays} days (Approved → Under Validation), including in-flight aging.`}
+              hint={`Tickets over the usual ${SRE_AUDIT_TEAM_SLA_LABEL} of ${insights.teamSlaTargetDays} business days (Approved → Under Validation), including in-flight aging.`}
               tickets={teamBreaches}
               emptyLabel={`No ${SRE_AUDIT_TEAM_SLA_BREACHES_LABEL.toLowerCase()} in this view.`}
             />
             <BreachTable
               title={selectedAuditType ? `${COMPLIANCE_SLA_BREACHES_LABEL} · ${selectedAuditType}` : COMPLIANCE_SLA_BREACHES_LABEL}
-              hint={`Tickets over the usual ${COMPLIANCE_SLA_LABEL} of ${insights.reviewerSlaTargetDays} days (Under Validation → Done), including in-flight aging.`}
+              hint={`Tickets over the usual ${COMPLIANCE_SLA_LABEL} of ${insights.reviewerSlaTargetDays} business days (Under Validation → Done), including in-flight aging.`}
               tickets={reviewerBreaches}
               emptyLabel={`No ${COMPLIANCE_SLA_BREACHES_LABEL.toLowerCase()} in this view.`}
             />

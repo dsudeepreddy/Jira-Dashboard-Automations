@@ -301,6 +301,15 @@ test('velocity falls back to ISO weeks when sprint membership is missing', () =>
   assert.equal(metrics.velocityTrend[0].actual, 3);
 });
 
+test('businessDaysBetween excludes Saturday and Sunday', () => {
+  const { businessDaysBetween } = require('./.tmp/analytics.js');
+  // Fri 2026-01-09 → Mon 2026-01-12 = 1 weekday (Fri) before Mon start of end day... 
+  // Fri 00:00 to Mon 00:00 includes Fri only as full weekday before Monday.
+  assert.equal(businessDaysBetween(new Date('2026-01-09T00:00:00.000Z'), new Date('2026-01-12T00:00:00.000Z')), 1);
+  // Mon → next Mon = 5 weekdays
+  assert.equal(businessDaysBetween(new Date('2026-01-05T00:00:00.000Z'), new Date('2026-01-12T00:00:00.000Z')), 5);
+});
+
 test('audit insights include stage completion, SLAs, and breach lists', () => {
   const { deriveAuditSlaTimestamps, aggregateDashboardMetrics } = require('./.tmp/analytics.js');
 
@@ -319,7 +328,7 @@ test('audit insights include stage completion, SLAs, and breach lists', () => {
     },
   ];
   const sla = deriveAuditSlaTimestamps('2026-01-01T00:00:00.000Z', '2026-01-15T00:00:00.000Z', 'Done', histories);
-  assert.equal(sla.teamSlaDays, 7);
+  assert.equal(sla.teamSlaDays, 5);
   assert.equal(sla.reviewerSlaDays, 3);
 
   const issues = [
@@ -387,7 +396,7 @@ test('audit insights include stage completion, SLAs, and breach lists', () => {
   assert.ok(soxStages);
   assert.equal(soxStages.total, 2);
   assert.ok(soxStages.stages.find((stage) => stage.name === 'Done')?.value >= 1);
-  assert.equal(metrics.teamSlaByAuditType.find((row) => row.auditType === 'SOX')?.avgDays, 7);
+  assert.equal(metrics.teamSlaByAuditType.find((row) => row.auditType === 'SOX')?.avgDays, 5);
   assert.equal(metrics.reviewerSlaByAuditType.find((row) => row.auditType === 'SOX')?.avgDays, 3);
   assert.ok(metrics.auditInsights.teamSlaBreaches.some((ticket) => ticket.key === 'AUD-2'));
   assert.equal(metrics.auditInsights.teamSlaBreaches.some((ticket) => ticket.key === 'AUD-1'), false);

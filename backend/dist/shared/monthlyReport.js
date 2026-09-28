@@ -116,7 +116,7 @@ function buildMonthlyReport(issues, options) {
             if (issue.approvedAt && !issue.underValidationAt) {
                 const start = (0, analytics_1.toSafeDate)(issue.approvedAt);
                 if (start) {
-                    const elapsed = (0, analytics_1.daysBetween)(start, now);
+                    const elapsed = (0, analytics_1.businessDaysBetween)(start, now);
                     if (elapsed > teamTarget) {
                         breaches.push({
                             key: issue.key,
@@ -134,7 +134,7 @@ function buildMonthlyReport(issues, options) {
             if (issue.underValidationAt && !issue.doneAt && !issue.resolved) {
                 const start = (0, analytics_1.toSafeDate)(issue.underValidationAt);
                 if (start) {
-                    const elapsed = (0, analytics_1.daysBetween)(start, now);
+                    const elapsed = (0, analytics_1.businessDaysBetween)(start, now);
                     if (elapsed > reviewerTarget) {
                         breaches.push({
                             key: issue.key,

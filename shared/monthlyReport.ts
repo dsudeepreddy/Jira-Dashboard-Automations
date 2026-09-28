@@ -2,7 +2,7 @@ import type { AnalyticsIssue } from './analytics';
 import {
   DEFAULT_REVIEWER_SLA_TARGET_DAYS,
   DEFAULT_TEAM_SLA_TARGET_DAYS,
-  daysBetween,
+  businessDaysBetween,
   isDoneIssue,
   toSafeDate,
 } from './analytics';
@@ -189,7 +189,7 @@ export function buildMonthlyReport(
       if (issue.approvedAt && !issue.underValidationAt) {
         const start = toSafeDate(issue.approvedAt);
         if (start) {
-          const elapsed = daysBetween(start, now);
+          const elapsed = businessDaysBetween(start, now);
           if (elapsed > teamTarget) {
             breaches.push({
               key: issue.key,
@@ -207,7 +207,7 @@ export function buildMonthlyReport(
       if (issue.underValidationAt && !issue.doneAt && !issue.resolved) {
         const start = toSafeDate(issue.underValidationAt);
         if (start) {
-          const elapsed = daysBetween(start, now);
+          const elapsed = businessDaysBetween(start, now);
           if (elapsed > reviewerTarget) {
             breaches.push({
               key: issue.key,

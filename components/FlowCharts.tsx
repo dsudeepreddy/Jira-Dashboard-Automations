@@ -52,7 +52,7 @@ export function VelocityChart({
 
 export function WipAgingChart({ data }: { data: Array<{ bucket: string; count: number }> }) {
   return (
-    <ChartPanel className="h-full" eyebrow="Flow risk" title="In-progress aging" hint="In-progress issues by days." delay={0.34}>
+    <ChartPanel className="h-full" eyebrow="Flow Risk" title="In-Progress Aging" hint="In-progress issues by days." delay={0.34}>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 4 }}>
@@ -145,56 +145,47 @@ export function AssigneeLoadChart({ data }: { data: AssigneeLoadRow[] }) {
   return (
     <ChartPanel
       className="h-full"
-      eyebrow="Team load"
-      title="Open work by assignee"
+      eyebrow="Team Load"
+      title="Open Work by Assignee"
       hint="Each bar stacks open tickets by current status. Hover a segment for stage and ticket keys."
       delay={0.38}
     >
-      <div className="max-h-80 overflow-y-auto pr-1">
-        <div style={{ height: Math.max(288, chartData.length * 36) }}>
-          {chartData.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="currentColor" className="text-slate-300/40 dark:text-white/10" />
-                <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" width={148} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={0} />
-                <Tooltip content={<AssigneeStageTooltip rows={data} />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                {statuses.map(([status, color], index) => {
-                  const isFirst = index === 0;
-                  const isLast = index === statuses.length - 1;
-                  const radius: [number, number, number, number] = isFirst && isLast
-                    ? [8, 8, 8, 8]
-                    : isFirst
-                      ? [8, 0, 0, 8]
-                      : isLast
-                        ? [0, 8, 8, 0]
-                        : [0, 0, 0, 0];
-                  return (
-                    <Bar
-                      key={status}
-                      dataKey={status}
-                      stackId="stages"
-                      name={status}
-                      fill={color}
-                      radius={radius}
-                      animationDuration={1000}
-                    >
-                      {chartData.map((entry) => (
-                        <Cell
-                          key={`${entry.name}-${status}`}
-                          fill={entry.name === 'Unassigned' ? '#ef4444' : color}
-                        />
-                      ))}
-                    </Bar>
-                  );
-                })}
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-slate-500">No open work in this filter.</div>
-          )}
-        </div>
+      <div className="h-72">
+        {chartData.length ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="currentColor" className="text-slate-300/40 dark:text-white/10" />
+              <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={110} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+              <Tooltip content={<AssigneeStageTooltip rows={data} />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {statuses.map(([status, color], index) => {
+                const isLast = index === statuses.length - 1;
+                const radius: [number, number, number, number] = isLast ? [0, 8, 8, 0] : [0, 0, 0, 0];
+                return (
+                  <Bar
+                    key={status}
+                    dataKey={status}
+                    stackId="stages"
+                    name={status}
+                    fill={color}
+                    radius={radius}
+                    animationDuration={900}
+                  >
+                    {chartData.map((entry) => (
+                      <Cell
+                        key={`${entry.name}-${status}`}
+                        fill={entry.name === 'Unassigned' ? '#ef4444' : color}
+                      />
+                    ))}
+                  </Bar>
+                );
+              })}
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-slate-500">No open work in this filter.</div>
+        )}
       </div>
     </ChartPanel>
   );

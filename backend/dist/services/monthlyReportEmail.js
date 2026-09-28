@@ -9,9 +9,10 @@ const COLORS = {
     closed: '#7c3aed',
     team: '#f59e0b',
     reviewer: '#10b981',
-    hold: '#f97316',
+    progress: '#f97316',
     validation: '#a855f7',
-    open: '#64748b',
+    apps: '#0ea5e9',
+    types: '#6366f1',
     headerFrom: '#0e7490',
     headerTo: '#6d28d9',
 };
@@ -22,11 +23,19 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
 }
-function metricCard(label, value, accent, tint) {
+function detailButton(dashboardUrl, hash) {
+    if (!dashboardUrl)
+        return '';
+    const href = `${dashboardUrl.replace(/\/$/, '')}${hash.startsWith('#') ? hash : `#${hash}`}`;
+    return `<a href="${escapeHtml(href)}" style="display:inline-block;margin-left:10px;padding:3px 10px;border-radius:999px;border:1px solid #67e8f9;background:#ecfeff;color:#0e7490;font-size:11px;font-weight:700;text-decoration:none;vertical-align:middle;">Details</a>`;
+}
+function metricCard(label, value, accent, tint, dashboardUrl, hash) {
     return `
     <td style="padding:6px;width:25%;vertical-align:top;">
       <div style="border:1px solid ${accent}33;border-radius:14px;padding:14px 12px;background:${tint};">
-        <div style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:${accent};font-weight:700;">${escapeHtml(label)}</div>
+        <div style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:${accent};font-weight:700;">
+          ${escapeHtml(label)}${hash ? detailButton(dashboardUrl, hash) : ''}
+        </div>
         <div style="margin-top:8px;font-size:24px;font-weight:700;color:#0f172a;">${escapeHtml(value)}</div>
       </div>
     </td>`;
@@ -36,38 +45,36 @@ function legendChip(label, color) {
     <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${color};margin-right:6px;vertical-align:middle;"></span>${escapeHtml(label)}
   </span>`;
 }
-function sectionTitle(title, subtitle) {
+function sectionTitle(title, subtitle, dashboardUrl, hash) {
     return `
     <tr>
       <td style="padding:18px 28px 6px;">
-        <div style="font-size:16px;font-weight:700;color:#0f172a;">${escapeHtml(title)}</div>
+        <div style="font-size:16px;font-weight:700;color:#0f172a;">
+          ${escapeHtml(title)}${hash ? detailButton(dashboardUrl, hash) : ''}
+        </div>
         ${subtitle ? `<div style="margin-top:4px;font-size:12px;color:#64748b;">${escapeHtml(subtitle)}</div>` : ''}
       </td>
     </tr>`;
 }
-/** Email-safe horizontal paired bars (Opened / Closed). */
-function pairedBarChart(rows, emptyLabel) {
+/** Combined opened + closed on one line; hover (title) shows counts. */
+function combinedOpenedClosedChart(rows, emptyLabel) {
     if (!rows.length) {
         return `<div style="padding:16px;color:#64748b;font-size:13px;">${escapeHtml(emptyLabel)}</div>`;
     }
-    const max = Math.max(1, ...rows.flatMap((row) => [row.opened, row.closed]));
+    const max = Math.max(1, ...rows.flatMap((row) => [row.opened + row.closed]));
     const body = rows.map((row) => {
-        const openPct = Math.max(row.opened ? 4 : 0, Math.round((row.opened / max) * 100));
-        const closedPct = Math.max(row.closed ? 4 : 0, Math.round((row.closed / max) * 100));
+        const openPct = Math.max(row.opened ? 3 : 0, Math.round((row.opened / max) * 100));
+        const closedPct = Math.max(row.closed ? 3 : 0, Math.round((row.closed / max) * 100));
+        const tip = `Opened: ${row.opened} · Closed: ${row.closed}`;
         return `
       <tr>
-        <td style="padding:8px 0 4px;font-size:12px;font-weight:600;color:#334155;width:28%;vertical-align:top;">${escapeHtml(row.label)}</td>
-        <td style="padding:8px 0 4px;width:72%;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:4px;">
+        <td style="padding:8px 0;font-size:12px;font-weight:600;color:#334155;width:28%;vertical-align:middle;">${escapeHtml(row.label)}</td>
+        <td style="padding:8px 0;width:72%;" title="${escapeHtml(tip)}">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" title="${escapeHtml(tip)}">
             <tr>
-              <td style="width:${openPct}%;background:${COLORS.opened};height:12px;border-radius:6px;"></td>
-              <td style="padding-left:8px;font-size:11px;color:#0891b2;white-space:nowrap;">${row.opened} opened</td>
-            </tr>
-          </table>
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0;">
-            <tr>
-              <td style="width:${closedPct}%;background:${COLORS.closed};height:12px;border-radius:6px;"></td>
-              <td style="padding-left:8px;font-size:11px;color:#7c3aed;white-space:nowrap;">${row.closed} closed</td>
+              <td style="width:${openPct}%;background:${COLORS.opened};height:14px;border-radius:6px 0 0 6px;" title="Opened: ${row.opened}"></td>
+              <td style="width:${closedPct}%;background:${COLORS.closed};height:14px;border-radius:0 6px 6px 0;" title="Closed: ${row.closed}"></td>
+              <td></td>
             </tr>
           </table>
         </td>
@@ -79,82 +86,48 @@ function pairedBarChart(rows, emptyLabel) {
       ${body}
     </table>`;
 }
-/** Single-series horizontal bars (e.g. SLA days). */
-function singleBarChart(rows, color, emptyLabel) {
-    if (!rows.length) {
+/** Combined SRE Audit Team + Compliance SLA averages by audit type. */
+function combinedSlaChart(rows, emptyLabel) {
+    const usable = rows.filter((row) => row.teamDays != null || row.reviewerDays != null);
+    if (!usable.length) {
         return `<div style="padding:16px;color:#64748b;font-size:13px;">${escapeHtml(emptyLabel)}</div>`;
     }
-    const max = Math.max(1, ...rows.map((row) => row.value));
-    const body = rows.map((row) => {
-        const pct = Math.max(row.value ? 4 : 0, Math.round((row.value / max) * 100));
+    const max = Math.max(1, ...usable.flatMap((row) => [row.teamDays || 0, row.reviewerDays || 0]));
+    const body = usable.map((row) => {
+        const team = row.teamDays;
+        const reviewer = row.reviewerDays;
+        const teamPct = Math.max(team ? 4 : 0, Math.round(((team || 0) / max) * 100));
+        const reviewerPct = Math.max(reviewer ? 4 : 0, Math.round(((reviewer || 0) / max) * 100));
+        const tip = `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL}: ${team == null ? 'n/a' : `${team}d`} · ${slaLabels_1.COMPLIANCE_SLA_LABEL}: ${reviewer == null ? 'n/a' : `${reviewer}d`}`;
         return `
       <tr>
-        <td style="padding:7px 0;font-size:12px;font-weight:600;color:#334155;width:32%;">${escapeHtml(row.label)}</td>
-        <td style="padding:7px 0;width:52%;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-            <tr><td style="width:${pct}%;background:${color};height:12px;border-radius:6px;"></td><td></td></tr>
+        <td style="padding:8px 0;font-size:12px;font-weight:600;color:#334155;width:26%;vertical-align:top;">${escapeHtml(row.label)}</td>
+        <td style="padding:8px 0;width:74%;" title="${escapeHtml(tip)}">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:4px;">
+            <tr>
+              <td style="width:${teamPct}%;background:${COLORS.team};height:10px;border-radius:5px;" title="${escapeHtml(`${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL}: ${team == null ? 'n/a' : `${team}d`}`)}"></td>
+              <td style="padding-left:8px;font-size:11px;color:#b45309;white-space:nowrap;">${team == null ? '—' : `${team}d`}</td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0;">
+            <tr>
+              <td style="width:${reviewerPct}%;background:${COLORS.reviewer};height:10px;border-radius:5px;" title="${escapeHtml(`${slaLabels_1.COMPLIANCE_SLA_LABEL}: ${reviewer == null ? 'n/a' : `${reviewer}d`}`)}"></td>
+              <td style="padding-left:8px;font-size:11px;color:#047857;white-space:nowrap;">${reviewer == null ? '—' : `${reviewer}d`}</td>
+            </tr>
           </table>
         </td>
-        <td style="padding:7px 0 7px 8px;font-size:12px;color:#0f172a;font-weight:600;white-space:nowrap;text-align:right;">${row.value}${row.suffix || ''}</td>
       </tr>`;
     }).join('');
     return `
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:14px;background:#ffffff;padding:8px 14px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:14px;background:#ffffff;padding:12px 14px;">
+      <tr><td style="padding-bottom:8px;">${legendChip(slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL, COLORS.team)}${legendChip(slaLabels_1.COMPLIANCE_SLA_LABEL, COLORS.reviewer)}</td></tr>
       ${body}
     </table>`;
 }
-function snapshotBars(report) {
-    const rows = [
-        { label: 'Still open', value: report.totals.stillOpen, color: COLORS.open },
-        { label: 'On hold', value: report.totals.onHold, color: COLORS.hold },
-        { label: 'Under validation', value: report.totals.underValidation, color: COLORS.validation },
-        { label: 'Outside SLA', value: report.topBreaches.length, color: '#ef4444' },
-    ].filter((row) => row.value > 0);
-    if (!rows.length) {
-        return `<div style="padding:16px;color:#64748b;font-size:13px;">No open-work snapshot for this month.</div>`;
-    }
-    const max = Math.max(1, ...rows.map((row) => row.value));
-    return `
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:14px;background:#ffffff;padding:8px 14px;">
-      ${rows.map((row) => {
-        const pct = Math.max(4, Math.round((row.value / max) * 100));
-        return `<tr>
-          <td style="padding:7px 0;font-size:12px;font-weight:600;color:#334155;width:36%;">${escapeHtml(row.label)}</td>
-          <td style="padding:7px 0;width:48%;">
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-              <tr><td style="width:${pct}%;background:${row.color};height:12px;border-radius:6px;"></td><td></td></tr>
-            </table>
-          </td>
-          <td style="padding:7px 0 7px 8px;font-size:12px;font-weight:700;color:#0f172a;text-align:right;">${row.value}</td>
-        </tr>`;
-    }).join('')}
-    </table>`;
-}
-function throughputCompare(report) {
-    const max = Math.max(1, report.totals.opened, report.totals.closed);
-    const openPct = Math.max(report.totals.opened ? 6 : 0, Math.round((report.totals.opened / max) * 100));
-    const closedPct = Math.max(report.totals.closed ? 6 : 0, Math.round((report.totals.closed / max) * 100));
-    return `
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:14px;background:linear-gradient(180deg,#ecfeff,#ffffff);padding:14px;">
-      <tr><td style="padding-bottom:10px;">${legendChip('Opened', COLORS.opened)}${legendChip('Closed', COLORS.closed)}</td></tr>
-      <tr>
-        <td>
-          <div style="font-size:12px;font-weight:600;color:#0891b2;margin-bottom:4px;">Opened · ${report.totals.opened}</div>
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>
-            <td style="width:${openPct}%;background:${COLORS.opened};height:18px;border-radius:8px;"></td><td></td>
-          </tr></table>
-          <div style="font-size:12px;font-weight:600;color:#7c3aed;margin:12px 0 4px;">Closed · ${report.totals.closed}</div>
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>
-            <td style="width:${closedPct}%;background:${COLORS.closed};height:18px;border-radius:8px;"></td><td></td>
-          </tr></table>
-        </td>
-      </tr>
-    </table>`;
-}
-function breachList(report) {
+function breachList(report, dashboardUrl) {
     const browse = dashboardContract_1.ATLASSIAN_BROWSE_BASE_URL;
     if (!report.topBreaches.length) {
-        return `<div style="padding:16px;border:1px solid #bbf7d0;border-radius:14px;background:#f0fdf4;color:#166534;font-size:13px;">No open tickets outside usual SLA.</div>`;
+        return `<div style="padding:16px;border:1px solid #bbf7d0;border-radius:14px;background:#f0fdf4;color:#166534;font-size:13px;">No open tickets outside usual SLA.${detailButton(dashboardUrl, '#outside-sla')}</div>`;
     }
     const rows = report.topBreaches.slice(0, 10).map((row) => `
     <tr>
@@ -183,24 +156,29 @@ function breachList(report) {
 function renderMonthlyReportEmail(report, dashboardUrl) {
     const subject = (0, monthlyReport_1.monthlyReportSubject)(report);
     const intro = (0, monthlyReport_1.monthlyReportIntro)(report);
-    const auditBars = pairedBarChart(report.byAuditType.slice(0, 8).map((row) => ({
+    const auditBars = combinedOpenedClosedChart(report.byAuditType.slice(0, 8).map((row) => ({
         label: row.auditType,
         opened: row.opened,
         closed: row.closed,
     })), 'No audit-type activity in this month.');
-    const appBars = pairedBarChart(report.topApplications.slice(0, 8).map((row) => ({
+    const appBars = combinedOpenedClosedChart(report.topApplications.slice(0, 8).map((row) => ({
         label: row.name,
         opened: row.opened,
         closed: row.closed,
     })), 'No application activity tagged this month.');
-    const teamSlaBars = singleBarChart(report.byAuditType
-        .filter((row) => row.teamSlaAvgDays != null)
-        .slice(0, 8)
-        .map((row) => ({ label: row.auditType, value: row.teamSlaAvgDays, suffix: 'd' })), COLORS.team, 'No completed SRE Audit Team SLA handoffs this month.');
-    const reviewerSlaBars = singleBarChart(report.byAuditType
-        .filter((row) => row.reviewerSlaAvgDays != null)
-        .slice(0, 8)
-        .map((row) => ({ label: row.auditType, value: row.reviewerSlaAvgDays, suffix: 'd' })), COLORS.reviewer, 'No completed Compliance SLA transitions this month.');
+    const slaBars = combinedSlaChart(report.byAuditType.slice(0, 8).map((row) => ({
+        label: row.auditType,
+        teamDays: row.teamSlaAvgDays,
+        reviewerDays: row.reviewerSlaAvgDays,
+    })), 'No completed SLA handoffs this month.');
+    const openDashboard = dashboardUrl
+        ? `
+            <tr>
+              <td style="padding:16px 28px 8px;">
+                <a href="${escapeHtml(dashboardUrl)}" style="display:inline-block;background:linear-gradient(135deg,#0891b2,#7c3aed);color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-size:13px;font-weight:700;">Open Dashboard</a>
+              </td>
+            </tr>`
+        : '';
     const html = `<!DOCTYPE html>
 <html>
   <body style="margin:0;padding:0;background:#e0f2fe;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
@@ -210,11 +188,12 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
           <table role="presentation" width="680" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #a5f3fc;box-shadow:0 12px 40px rgba(14,116,144,0.12);">
             <tr>
               <td style="padding:26px 28px;background:linear-gradient(135deg,${COLORS.headerFrom},${COLORS.headerTo});color:#ffffff;">
-                <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;opacity:0.9;">SRE Audit · Monthly</div>
+                <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;opacity:0.9;">SRE Audit · Monthly Jira Report</div>
                 <div style="margin-top:8px;font-size:26px;font-weight:700;">${escapeHtml(report.periodLabel)}</div>
                 <div style="margin-top:6px;font-size:13px;opacity:0.9;">${escapeHtml(report.startDate)} → ${escapeHtml(report.endDate)}${report.projectKey ? ` · ${escapeHtml(report.projectKey)}` : ''}</div>
               </td>
             </tr>
+            ${openDashboard}
             <tr>
               <td style="padding:18px 28px;color:#334155;font-size:14px;line-height:1.5;background:#f0f9ff;border-bottom:1px solid #e0f2fe;">
                 ${escapeHtml(intro)}
@@ -224,10 +203,10 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
               <td style="padding:16px 18px 4px;">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                   <tr>
-                    ${metricCard('Opened', String(report.totals.opened), COLORS.opened, '#ecfeff')}
-                    ${metricCard('Closed', String(report.totals.closed), COLORS.closed, '#f5f3ff')}
-                    ${metricCard('Net', `${report.totals.netChange > 0 ? '+' : ''}${report.totals.netChange}`, report.totals.netChange > 0 ? '#ea580c' : '#059669', report.totals.netChange > 0 ? '#fff7ed' : '#ecfdf5')}
-                    ${metricCard('Still open', String(report.totals.stillOpen), COLORS.open, '#f8fafc')}
+                    ${metricCard('Opened', String(report.totals.opened), COLORS.opened, '#ecfeff', dashboardUrl, '#hero-kpis')}
+                    ${metricCard('Closed', String(report.totals.closed), COLORS.closed, '#f5f3ff', dashboardUrl, '#hero-kpis')}
+                    ${metricCard('In Progress', String(report.totals.inProgress), COLORS.progress, '#fff7ed', dashboardUrl, '#team-load')}
+                    ${metricCard('Under Validation', String(report.totals.underValidation), COLORS.validation, '#faf5ff', dashboardUrl, '#hero-kpis')}
                   </tr>
                 </table>
               </td>
@@ -236,34 +215,22 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
               <td style="padding:4px 18px 8px;">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                   <tr>
-                    ${metricCard('On hold', String(report.totals.onHold), COLORS.hold, '#fff7ed')}
-                    ${metricCard('Under validation', String(report.totals.underValidation), COLORS.validation, '#faf5ff')}
-                    ${metricCard(`${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} avg`, report.teamSlaOverall.avgDays == null ? '—' : `${report.teamSlaOverall.avgDays}d`, COLORS.team, '#fffbeb')}
-                    ${metricCard(`${slaLabels_1.COMPLIANCE_SLA_LABEL} avg`, report.reviewerSlaOverall.avgDays == null ? '—' : `${report.reviewerSlaOverall.avgDays}d`, COLORS.reviewer, '#ecfdf5')}
+                    ${metricCard('Total Applications', String(report.totals.uniqueApplications), COLORS.apps, '#f0f9ff', dashboardUrl, '#secondary-kpis')}
+                    ${metricCard('Audit Types', String(report.totals.uniqueAuditTypes), COLORS.types, '#eef2ff', dashboardUrl, '#secondary-kpis')}
+                    ${metricCard(`${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} avg`, report.teamSlaOverall.avgDays == null ? '—' : `${report.teamSlaOverall.avgDays}d`, COLORS.team, '#fffbeb', dashboardUrl, '#sla-metrics')}
+                    ${metricCard(`${slaLabels_1.COMPLIANCE_SLA_LABEL} avg`, report.reviewerSlaOverall.avgDays == null ? '—' : `${report.reviewerSlaOverall.avgDays}d`, COLORS.reviewer, '#ecfdf5', dashboardUrl, '#sla-metrics')}
                   </tr>
                 </table>
               </td>
             </tr>
-            ${sectionTitle('Throughput this month', 'Opened vs closed overall')}
-            <tr><td style="padding:8px 20px 12px;">${throughputCompare(report)}</td></tr>
-            ${sectionTitle('Opened / closed by audit type')}
+            ${sectionTitle('Opened / Closed by Audit Type', undefined, dashboardUrl, '#work-by-audit-type')}
             <tr><td style="padding:8px 20px 12px;">${auditBars}</td></tr>
-            ${sectionTitle('Top applications', 'Opened vs closed by application')}
+            ${sectionTitle('SLA Metrics by Audit Type', `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} (Approved → Under Validation, ${report.teamSlaOverall.targetDays}d) · ${slaLabels_1.COMPLIANCE_SLA_LABEL} (Under Validation → Done, ${report.reviewerSlaOverall.targetDays}d)`, dashboardUrl, '#sla-metrics')}
+            <tr><td style="padding:8px 20px 12px;">${slaBars}</td></tr>
+            ${sectionTitle('Top Applications', 'Opened vs closed by application', dashboardUrl, '#secondary-kpis')}
             <tr><td style="padding:8px 20px 12px;">${appBars}</td></tr>
-            ${sectionTitle(`${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} by audit type`, `Approved → Under Validation (target ${report.teamSlaOverall.targetDays}d)`)}
-            <tr><td style="padding:8px 20px 12px;">${teamSlaBars}</td></tr>
-            ${sectionTitle(`${slaLabels_1.COMPLIANCE_SLA_LABEL} by audit type`, `Under Validation → Done (target ${report.reviewerSlaOverall.targetDays}d)`)}
-            <tr><td style="padding:8px 20px 12px;">${reviewerSlaBars}</td></tr>
-            ${sectionTitle('Open work snapshot', 'Current open portfolio pressure')}
-            <tr><td style="padding:8px 20px 12px;">${snapshotBars(report)}</td></tr>
-            ${sectionTitle('Outside usual SLA', `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} ${report.teamSlaOverall.targetDays}d · ${slaLabels_1.COMPLIANCE_SLA_LABEL} ${report.reviewerSlaOverall.targetDays}d`)}
-            <tr><td style="padding:8px 20px 16px;">${breachList(report)}</td></tr>
-            ${dashboardUrl ? `
-            <tr>
-              <td style="padding:4px 28px 12px;">
-                <a href="${escapeHtml(dashboardUrl)}" style="display:inline-block;background:linear-gradient(135deg,#0891b2,#7c3aed);color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-size:13px;font-weight:700;">Open dashboard</a>
-              </td>
-            </tr>` : ''}
+            ${sectionTitle('Outside Usual SLA', `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} ${report.teamSlaOverall.targetDays}d · ${slaLabels_1.COMPLIANCE_SLA_LABEL} ${report.reviewerSlaOverall.targetDays}d`, dashboardUrl, '#outside-sla')}
+            <tr><td style="padding:8px 20px 16px;">${breachList(report, dashboardUrl)}</td></tr>
             <tr>
               <td style="padding:0 28px 28px;font-size:12px;color:#64748b;">
                 Full month detail is attached as Excel (same layout as the dashboard export, scoped to this month).
@@ -279,13 +246,14 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
         subject,
         '',
         intro,
+        dashboardUrl ? `Open Dashboard: ${dashboardUrl}` : '',
         '',
         `Opened: ${report.totals.opened}`,
         `Closed: ${report.totals.closed}`,
-        `Net change: ${report.totals.netChange}`,
-        `Still open: ${report.totals.stillOpen}`,
-        `On hold: ${report.totals.onHold}`,
-        `Under validation: ${report.totals.underValidation}`,
+        `In Progress: ${report.totals.inProgress}`,
+        `Under Validation: ${report.totals.underValidation}`,
+        `Total Applications: ${report.totals.uniqueApplications}`,
+        `Audit Types: ${report.totals.uniqueAuditTypes}`,
         `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} avg: ${report.teamSlaOverall.avgDays ?? 'n/a'}`,
         `${slaLabels_1.COMPLIANCE_SLA_LABEL} avg: ${report.reviewerSlaOverall.avgDays ?? 'n/a'}`,
         '',
@@ -299,6 +267,6 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
         ...(report.topBreaches.length
             ? report.topBreaches.map((row) => `- ${row.key} [${row.kind}] ${row.slaDays}d/${row.targetDays}d — ${row.summary}`)
             : ['- none']),
-    ].join('\n');
+    ].filter((line) => line !== undefined).join('\n');
     return { subject, text, html };
 }

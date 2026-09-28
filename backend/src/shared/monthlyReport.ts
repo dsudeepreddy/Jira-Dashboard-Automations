@@ -42,8 +42,11 @@ export interface MonthlyReport {
     closed: number;
     netChange: number;
     stillOpen: number;
+    inProgress: number;
     onHold: number;
     underValidation: number;
+    uniqueApplications: number;
+    uniqueAuditTypes: number;
   };
   byAuditType: MonthlyAuditTypeRow[];
   teamSlaOverall: { avgDays: number | null; count: number; targetDays: number };
@@ -79,6 +82,11 @@ function isOnHold(status: string): boolean {
 function isUnderValidation(status: string): boolean {
   const n = status.toLowerCase();
   return n.includes('under validation') || n === 'validation';
+}
+
+function isInProgress(status: string): boolean {
+  const n = status.toLowerCase().trim();
+  return n.includes('progress') || n.includes('doing') || n.includes('development') || n.includes('in review');
 }
 
 /** Previous calendar month relative to `now` (UTC date parts). */
@@ -140,9 +148,12 @@ export function buildMonthlyReport(
   let opened = 0;
   let closed = 0;
   let stillOpen = 0;
+  let inProgress = 0;
   let onHold = 0;
   let underValidation = 0;
   const appMap = new Map<string, { opened: number; closed: number }>();
+  const allApps = new Set<string>();
+  const allAuditTypes = new Set<string>();
   const breaches: MonthlySlaBreachRow[] = [];
 
   for (const issue of issues) {
@@ -152,6 +163,10 @@ export function buildMonthlyReport(
     const closedInMonth = inMonth(resolvedDay, startDate, endDate);
     const types = cleanTypes(issue.auditType);
     const apps = [...new Set((issue.application || []).map((value) => value.trim()).filter(Boolean))];
+    apps.forEach((name) => allApps.add(name));
+    types.forEach((type) => {
+      if (type !== '(none)') allAuditTypes.add(type);
+    });
 
     if (openedInMonth) {
       opened += 1;
@@ -184,7 +199,8 @@ export function buildMonthlyReport(
     if (!isDoneIssue(issue)) {
       stillOpen += 1;
       if (isOnHold(issue.status)) onHold += 1;
-      if (isUnderValidation(issue.status)) underValidation += 1;
+      else if (isUnderValidation(issue.status)) underValidation += 1;
+      else if (isInProgress(issue.status)) inProgress += 1;
 
       if (issue.approvedAt && !issue.underValidationAt) {
         const start = toSafeDate(issue.approvedAt);
@@ -238,8 +254,11 @@ export function buildMonthlyReport(
       closed,
       netChange: opened - closed,
       stillOpen,
+      inProgress,
       onHold,
       underValidation,
+      uniqueApplications: allApps.size,
+      uniqueAuditTypes: allAuditTypes.size,
     },
     byAuditType: [...byType.entries()]
       .map(([auditType, row]) => ({
@@ -264,7 +283,7 @@ export function buildMonthlyReport(
 
 export function monthlyReportSubject(report: MonthlyReport): string {
   const project = report.projectKey ? ` · ${report.projectKey}` : '';
-  return `SRE Audit Monthly Report — ${report.periodLabel}${project}`;
+  return `SRE Audit Monthly Jira Report — ${report.periodLabel}${project}`;
 }
 
 export function monthlyReportIntro(report: MonthlyReport): string {

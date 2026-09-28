@@ -15,8 +15,8 @@ export function ThroughputTrendChart({ data }: { data: ThroughputDatum[] }) {
   return (
     <ChartPanel
       className="h-full"
-      eyebrow="Delivery rhythm"
-      title="Monthly throughput"
+      eyebrow="Delivery Rhythm"
+      title="Monthly Throughput"
       hint="Tickets opened vs closed by calendar month (axis: YYYY-Mon)."
       delay={0.24}
     >

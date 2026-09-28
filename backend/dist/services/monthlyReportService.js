@@ -12,6 +12,7 @@ const monthlyReport_1 = require("../shared/monthlyReport");
 const monthlyReportEmail_1 = require("./monthlyReportEmail");
 const monthlyReportWorkbook_1 = require("./monthlyReportWorkbook");
 const emailClient_1 = require("./emailClient");
+const dashboardPublicUrl_1 = require("./dashboardPublicUrl");
 function parseRecipients(value) {
     return (value || '')
         .split(',')
@@ -117,7 +118,7 @@ async function sendMonthlyReport(options = {}) {
         closed: report.totals.closed,
         periodLabel: report.periodLabel,
     }));
-    const rendered = (0, monthlyReportEmail_1.renderMonthlyReportEmail)(report, env_1.env.MONTHLY_REPORT_DASHBOARD_URL || undefined);
+    const rendered = (0, monthlyReportEmail_1.renderMonthlyReportEmail)(report, (0, dashboardPublicUrl_1.resolveMonthlyReportDashboardUrl)());
     const workbook = (0, monthlyReportWorkbook_1.buildMonthlyReportWorkbookBuffer)(report, issues);
     const attachment = {
         filename: workbook.filename,

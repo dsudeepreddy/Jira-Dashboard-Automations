@@ -31,6 +31,10 @@ function isUnderValidation(status) {
     const n = status.toLowerCase();
     return n.includes('under validation') || n === 'validation';
 }
+function isInProgress(status) {
+    const n = status.toLowerCase().trim();
+    return n.includes('progress') || n.includes('doing') || n.includes('development') || n.includes('in review');
+}
 /** Previous calendar month relative to `now` (UTC date parts). */
 function previousMonthWindow(now = new Date()) {
     const year = now.getUTCFullYear();
@@ -70,9 +74,12 @@ function buildMonthlyReport(issues, options) {
     let opened = 0;
     let closed = 0;
     let stillOpen = 0;
+    let inProgress = 0;
     let onHold = 0;
     let underValidation = 0;
     const appMap = new Map();
+    const allApps = new Set();
+    const allAuditTypes = new Set();
     const breaches = [];
     for (const issue of issues) {
         const createdDay = dayKey(issue.created);
@@ -81,6 +88,11 @@ function buildMonthlyReport(issues, options) {
         const closedInMonth = inMonth(resolvedDay, startDate, endDate);
         const types = cleanTypes(issue.auditType);
         const apps = [...new Set((issue.application || []).map((value) => value.trim()).filter(Boolean))];
+        apps.forEach((name) => allApps.add(name));
+        types.forEach((type) => {
+            if (type !== '(none)')
+                allAuditTypes.add(type);
+        });
         if (openedInMonth) {
             opened += 1;
             types.forEach((type) => { ensure(type).opened += 1; });
@@ -111,8 +123,10 @@ function buildMonthlyReport(issues, options) {
             stillOpen += 1;
             if (isOnHold(issue.status))
                 onHold += 1;
-            if (isUnderValidation(issue.status))
+            else if (isUnderValidation(issue.status))
                 underValidation += 1;
+            else if (isInProgress(issue.status))
+                inProgress += 1;
             if (issue.approvedAt && !issue.underValidationAt) {
                 const start = (0, analytics_1.toSafeDate)(issue.approvedAt);
                 if (start) {
@@ -163,8 +177,11 @@ function buildMonthlyReport(issues, options) {
             closed,
             netChange: opened - closed,
             stillOpen,
+            inProgress,
             onHold,
             underValidation,
+            uniqueApplications: allApps.size,
+            uniqueAuditTypes: allAuditTypes.size,
         },
         byAuditType: [...byType.entries()]
             .map(([auditType, row]) => ({
@@ -188,7 +205,7 @@ function buildMonthlyReport(issues, options) {
 }
 function monthlyReportSubject(report) {
     const project = report.projectKey ? ` · ${report.projectKey}` : '';
-    return `SRE Audit Monthly Report — ${report.periodLabel}${project}`;
+    return `SRE Audit Monthly Jira Report — ${report.periodLabel}${project}`;
 }
 function monthlyReportIntro(report) {
     const net = report.totals.netChange;

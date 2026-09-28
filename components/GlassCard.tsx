@@ -7,10 +7,12 @@ export function GlassCard({
   children,
   className,
   spotlight = true,
+  id,
 }: {
   children: ReactNode;
   className?: string;
   spotlight?: boolean;
+  id?: string;
 }) {
   function handleMove(event: MouseEvent<HTMLDivElement>) {
     if (!spotlight) return;
@@ -21,7 +23,7 @@ export function GlassCard({
   }
 
   return (
-    <div onMouseMove={handleMove} className={cn('glass-card', !spotlight && '[&::before]:hidden', className)}>
+    <div id={id} onMouseMove={handleMove} className={cn('glass-card', !spotlight && '[&::before]:hidden', className)}>
       <div className="glass-body h-full">{children}</div>
     </div>
   );

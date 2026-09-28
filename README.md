@@ -51,11 +51,11 @@ Date filters apply to created date, except when a sprint is selected (the sprint
 ## Dashboard layout
 
 1. **Hero KPIs** — Total Jira's, Open Jira's, Under Validation Jira's, Done Jira's  
-2. **Secondary KPIs** — License / BU, Audit types, Applications, Monthly throughput  
-3. **Portfolio health** (status mix) + **Delivery rhythm** (monthly opened vs closed)  
-4. **Team load** (all assignees with open work) + **In-progress aging**  
-5. **Work by audit type** (volume chart, outside the collapsible audit section)  
-6. **Audit types** (collapsible) — stage completion, SRE Audit Team / Compliance SLA averages, **SRE Audit Team SLA breaches**, **Compliance SLA breaches** (scrollable tables)  
+2. **Secondary KPIs** — License / BU, Audit Types, Applications, Monthly Throughput Jira's  
+3. **Portfolio Health** (status mix) + **Delivery Rhythm** (monthly opened vs closed)  
+4. **Team Load** (all assignees with open work) + **In-Progress Aging**  
+5. **Work by Audit Type** (volume chart, outside the collapsible audit section)  
+6. **Audit Types** (collapsible) — stage completion, SRE Audit Team / Compliance SLA averages, **SRE Audit Team SLA breaches**, **Compliance SLA breaches** (scrollable tables)  
 7. **Velocity** + **Time in status**  
 8. **Issues** table — page sizes 10 / 25 / 50 / 100  
 
@@ -192,7 +192,9 @@ See [`.env.example`](.env.example) for the full list. Important variables:
 | `SMTP_HOST` / `SMTP_FROM` / `MONTHLY_REPORT_TO` | SMTP + stakeholder recipients for monthly email |
 | `MONTHLY_REPORT_ENABLED` | Auto-send previous-month report every Monday at 09:00 (`MONTHLY_REPORT_WEEKDAY=1`, `MONTHLY_REPORT_HOUR=9`, `MONTHLY_REPORT_TIMEZONE=Asia/Kolkata`). Requires `SMTP_HOST`, `SMTP_FROM`, and `MONTHLY_REPORT_TO`. |
 | `MONTHLY_REPORT_WEEKDAY` / `HOUR` / `TIMEZONE` | Schedule slot (default Mon 09:00 IST). Retries each minute during that hour if send fails. |
-| `MONTHLY_REPORT_DASHBOARD_URL` | Optional “Open dashboard” link in the email |
+| `MONTHLY_REPORT_DASHBOARD_URL` | Optional “Open Dashboard” link in the email (IP hosts are rewritten via `DASHBOARD_PUBLIC_HOSTNAME` or `hostname -a`) |
+| `DASHBOARD_PUBLIC_HOSTNAME` | Preferred hostname when the dashboard URL would otherwise show an IP |
+| `NEXT_PUBLIC_GITLAB_URL` | Optional docs icon in the dashboard header (opens your GitLab project page) |
 
 ### Monthly report
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { AuditInsights, SlaBreachTicket } from '@/shared/dashboardContract';
 import { atlassianIssueUrl } from '@/shared/dashboardContract';
@@ -103,6 +103,16 @@ export function InsightsView({
   const [expanded, setExpanded] = useState(true);
   const insights = auditInsights;
 
+  useEffect(() => {
+    const hash = typeof window !== 'undefined' ? window.location.hash : '';
+    if (hash === '#sla-metrics' || hash === '#outside-sla') {
+      setExpanded(true);
+      requestAnimationFrame(() => {
+        document.querySelector(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, []);
+
   const stageData = useMemo(() => {
     if (!insights || !selectedAuditType) return null;
     return insights.statusByAuditType.find((row) => row.auditType === selectedAuditType) || null;
@@ -134,7 +144,7 @@ export function InsightsView({
     : insights.workByAuditType.map((row) => ({ id: row.name, name: row.name }));
 
   return (
-    <section className="space-y-4 rounded-3xl border border-cyan-400/20 bg-cyan-50/30 p-4 dark:border-cyan-400/15 dark:bg-cyan-500/[0.05] sm:p-5">
+    <section className="scroll-mt-28 space-y-4 rounded-3xl border border-cyan-400/20 bg-cyan-50/30 p-4 dark:border-cyan-400/15 dark:bg-cyan-500/[0.05] sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button
           type="button"
@@ -142,8 +152,8 @@ export function InsightsView({
           className="flex w-full items-center justify-between gap-3 text-left sm:w-auto"
         >
           <div>
-            <p className="eyebrow">Audit types</p>
-            <h2 className="section-title">Workflow, SLAs & breaches</h2>
+            <p className="eyebrow">Audit Types</p>
+            <h2 className="section-title">Workflow, SLAs & Breaches</h2>
           </div>
           <ExpandHint expanded={expanded} />
         </button>
@@ -172,12 +182,12 @@ export function InsightsView({
               <div className="grid gap-5 xl:grid-cols-2">
                 <StatusDistributionChart
                   data={stageData?.stages || []}
-                  eyebrow="Completion by stage"
-                  title={`${selectedAuditType} workflow`}
+                  eyebrow="Completion by Stage"
+                  title={`${selectedAuditType} Workflow`}
                 />
                 <ChartPanel
-                  eyebrow="Stage counts"
-                  title={`${selectedAuditType} ticket stages`}
+                  eyebrow="Stage Counts"
+                  title={`${selectedAuditType} Ticket Stages`}
                   hint="Approve/Approved, To Do, On Hold, In Progress, Under Validation, Done."
                 >
                   <div className="h-72">
@@ -202,7 +212,7 @@ export function InsightsView({
                 </ChartPanel>
               </div>
 
-              <div className="grid gap-5 xl:grid-cols-2">
+              <div id="sla-metrics" className="scroll-mt-28 grid gap-5 xl:grid-cols-2">
                 <GlassCard className="p-5">
                   <p className="eyebrow">{SRE_AUDIT_TEAM_SLA_LABEL}</p>
                   <h2 className="section-title">Approved → Under Validation</h2>
@@ -236,25 +246,25 @@ export function InsightsView({
               </div>
             </>
           ) : (
-            <div className="grid gap-5 xl:grid-cols-2">
+            <div id="sla-metrics" className="scroll-mt-28 grid gap-5 xl:grid-cols-2">
               <ValidationTimeBarChart
                 data={insights.teamSlaByAuditType}
                 eyebrow={SRE_AUDIT_TEAM_SLA_LABEL}
-                title="Approved → Under Validation by audit type"
+                title="Approved → Under Validation by Audit Type"
                 hint="Average business days (Mon–Fri) from first Approved to first Under Validation. Select an audit type for stage and breach detail."
                 emptyLabel={`No completed ${SRE_AUDIT_TEAM_SLA_LABEL}s yet. Sync with changelog to populate.`}
               />
               <ValidationTimeBarChart
                 data={insights.reviewerSlaByAuditType}
                 eyebrow={COMPLIANCE_SLA_LABEL}
-                title="Under Validation → Done by audit type"
+                title="Under Validation → Done by Audit Type"
                 hint="Average business days (Mon–Fri) from first Under Validation to Done. Select an audit type for stage and breach detail."
                 emptyLabel={`No completed ${COMPLIANCE_SLA_LABEL}s yet. Sync with changelog to populate.`}
               />
             </div>
           )}
 
-          <div className="grid gap-5 xl:grid-cols-2">
+          <div id="outside-sla" className="scroll-mt-28 grid gap-5 xl:grid-cols-2">
             <BreachTable
               title={selectedAuditType ? `${SRE_AUDIT_TEAM_SLA_BREACHES_LABEL} · ${selectedAuditType}` : SRE_AUDIT_TEAM_SLA_BREACHES_LABEL}
               hint={`Tickets over the usual ${SRE_AUDIT_TEAM_SLA_LABEL} of ${insights.teamSlaTargetDays} business days (Approved → Under Validation), including in-flight aging.`}

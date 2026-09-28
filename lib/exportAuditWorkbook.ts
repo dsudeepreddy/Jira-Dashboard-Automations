@@ -94,7 +94,7 @@ export function buildAuditWorkbook(payload: DashboardPayload, issues: DashboardI
     ['Completion rate %', metrics.completionRate],
     ['Blocked', metrics.blockedCount],
     ['Avg lead time (days)', metrics.avgLeadTimeDays],
-    ['Monthly throughput', metrics.avgMonthlyThroughput ?? metrics.avgWeeklyThroughput],
+    ["Monthly Throughput Jira's", metrics.avgMonthlyThroughput ?? metrics.avgWeeklyThroughput],
     [],
     ['Work by audit type', 'Count', 'Open', 'Done', 'Done %'],
     ...(insights?.workByAuditType || []).map((row) => [

@@ -12,6 +12,7 @@ import type { AnalyticsIssue } from '../shared/analytics';
 import { renderMonthlyReportEmail } from './monthlyReportEmail';
 import { buildMonthlyReportWorkbookBuffer } from './monthlyReportWorkbook';
 import { emailDiagnostics, isEmailConfigured, sendMail } from './emailClient';
+import { resolveMonthlyReportDashboardUrl } from './dashboardPublicUrl';
 
 function parseRecipients(value?: string): string[] {
   return (value || '')
@@ -143,7 +144,7 @@ export async function sendMonthlyReport(options: {
     periodLabel: report.periodLabel,
   }));
 
-  const rendered = renderMonthlyReportEmail(report, env.MONTHLY_REPORT_DASHBOARD_URL || undefined);
+  const rendered = renderMonthlyReportEmail(report, resolveMonthlyReportDashboardUrl());
   const workbook = buildMonthlyReportWorkbookBuffer(report, issues);
   const attachment: MonthlyReportAttachment = {
     filename: workbook.filename,

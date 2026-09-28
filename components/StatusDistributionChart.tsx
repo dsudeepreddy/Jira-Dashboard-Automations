@@ -7,8 +7,8 @@ type StatusDatum = { name: string; value: number; color: string };
 
 export function StatusDistributionChart({
   data,
-  eyebrow = 'Portfolio health',
-  title = 'Status mix',
+  eyebrow = 'Portfolio Health',
+  title = 'Status Mix',
 }: {
   data: StatusDatum[];
   eyebrow?: string;

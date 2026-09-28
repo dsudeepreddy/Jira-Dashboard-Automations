@@ -100,6 +100,8 @@ const envSchema = z.object({
   MONTHLY_REPORT_TO: z.preprocess((value) => cleanOptionalString(value) ?? '', z.string().optional().or(z.literal(''))),
   MONTHLY_REPORT_PROJECT_KEY: z.preprocess((value) => cleanOptionalString(value) ?? '', z.string().optional().or(z.literal(''))),
   MONTHLY_REPORT_DASHBOARD_URL: z.preprocess((value) => cleanOptionalString(value) ?? '', z.string().optional().or(z.literal(''))),
+  /** Hostname used in email dashboard links when MONTHLY_REPORT_DASHBOARD_URL has an IP. Falls back to `hostname -a`. */
+  DASHBOARD_PUBLIC_HOSTNAME: z.preprocess((value) => cleanOptionalString(value) ?? '', z.string().optional().or(z.literal(''))),
   MONTHLY_REPORT_ENABLED: z.preprocess((value) => asBool(value, false), z.boolean().default(false)),
   /** @deprecated Prefer weekly Monday schedule via MONTHLY_REPORT_WEEKDAY / HOUR. Kept for compatibility. */
   MONTHLY_REPORT_DAY: z.coerce.number().int().min(1).max(28).default(1),

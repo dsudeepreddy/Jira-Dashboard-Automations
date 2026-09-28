@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle, AppWindow, Building2, ChevronLeft, ChevronRight, ClipboardList, Download, Filter, FolderKanban, Activity, CheckCircle2, ClipboardCheck, TrendingUp } from 'lucide-react';
+import { AlertTriangle, AppWindow, BookOpen, Building2, ChevronLeft, ChevronRight, ClipboardList, Download, Filter, FolderKanban, Activity, CheckCircle2, ClipboardCheck, TrendingUp } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardIssue, DashboardPayload, ExportIssuesPayload, IssuePagePayload } from '@/shared/dashboardContract';
@@ -203,7 +203,7 @@ export function DashboardLayout() {
         tone: 'cyan' as const,
       },
       {
-        title: 'Audit types',
+        title: 'Audit Types',
         value: data.metrics.fieldMetrics?.uniqueAuditTypes ?? 0,
         icon: ClipboardList,
         tone: 'violet' as const,
@@ -215,7 +215,7 @@ export function DashboardLayout() {
         tone: 'amber' as const,
       },
       {
-        title: 'Monthly throughput',
+        title: "Monthly Throughput Jira's",
         value: data.metrics.avgMonthlyThroughput ?? data.metrics.avgWeeklyThroughput,
         icon: TrendingUp,
         tone: 'mint' as const,
@@ -293,6 +293,18 @@ export function DashboardLayout() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {process.env.NEXT_PUBLIC_GITLAB_URL ? (
+                    <a
+                      href={process.env.NEXT_PUBLIC_GITLAB_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Documentation / GitLab"
+                      aria-label="Open documentation on GitLab"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/70 text-slate-700 transition hover:border-cyan-400/60 hover:text-cyan-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:text-cyan-300"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                    </a>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => { void exportExcel(); }}
@@ -450,12 +462,12 @@ export function DashboardLayout() {
 
         <section className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr] lg:items-end">
           <div>
-            <p className="eyebrow mb-3">SRE audit</p>
+            <p className="eyebrow mb-3">SRE Audit</p>
             <h1 className="text-4xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-5xl">
               SRE Audit Work, <span className="text-cyan-600 dark:text-cyan-300">by FY.</span>
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-              Project-level flow metrics by default. Expand Audit types to pick an audit type and see stage completion, SLAs, and out-of-SLA tickets.
+              Project-level flow metrics by default. Expand Audit Types to pick an audit type and see stage completion, SLAs, and out-of-SLA tickets.
             </p>
           </div>
           <GlassCard spotlight={false} className="px-5 py-4">
@@ -504,11 +516,11 @@ export function DashboardLayout() {
 
         {loading && !data ? <Skeleton /> : data ? (
           <>
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <section id="hero-kpis" className="scroll-mt-28 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
             </section>
 
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <section id="secondary-kpis" className="scroll-mt-28 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {secondaryMetrics.map((metric) => <MetricCard key={metric.title} {...metric} />)}
             </section>
 
@@ -517,28 +529,30 @@ export function DashboardLayout() {
               <ThroughputTrendChart data={data.metrics.createdVsResolved} />
             </section>
 
-            <section className="grid gap-5 xl:grid-cols-2 xl:items-stretch">
+            <section id="team-load" className="scroll-mt-28 grid gap-5 xl:grid-cols-2 xl:items-stretch">
               <AssigneeLoadChart data={data.metrics.assigneeLoad} />
               <WipAgingChart data={data.metrics.wipAging} />
             </section>
 
-            <FieldBarChart
-              data={data.metrics.auditInsights?.workByAuditType || []}
-              eyebrow="Volume"
-              title="Work by audit type"
-              hint="Total tickets for each audit type in the current filter."
-              emptyLabel="No Audit Type values on issues in this filter."
-            />
+            <div id="work-by-audit-type" className="scroll-mt-28">
+              <FieldBarChart
+                data={data.metrics.auditInsights?.workByAuditType || []}
+                eyebrow="Volume"
+                title="Work by Audit Type"
+                hint="Total tickets for each audit type in the current filter."
+                emptyLabel="No Audit Type values on issues in this filter."
+              />
+            </div>
 
             <InsightsView
               auditInsights={data.metrics.auditInsights}
               auditTypeOptions={data.auditTypes}
             />
 
-            <GlassCard className="p-5">
+            <GlassCard id="issues" className="scroll-mt-28 p-5">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <p className="eyebrow">Work queue</p>
+                  <p className="eyebrow">Work Queue</p>
                   <h2 className="section-title">Issues</h2>
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{issues?.total || 0} matching issues</p>
                 </div>

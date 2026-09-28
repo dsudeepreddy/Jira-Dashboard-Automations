@@ -103,6 +103,8 @@ const envSchema = zod_1.z.object({
     MONTHLY_REPORT_TO: zod_1.z.preprocess((value) => cleanOptionalString(value) ?? '', zod_1.z.string().optional().or(zod_1.z.literal(''))),
     MONTHLY_REPORT_PROJECT_KEY: zod_1.z.preprocess((value) => cleanOptionalString(value) ?? '', zod_1.z.string().optional().or(zod_1.z.literal(''))),
     MONTHLY_REPORT_DASHBOARD_URL: zod_1.z.preprocess((value) => cleanOptionalString(value) ?? '', zod_1.z.string().optional().or(zod_1.z.literal(''))),
+    /** Hostname used in email dashboard links when MONTHLY_REPORT_DASHBOARD_URL has an IP. Falls back to `hostname -a`. */
+    DASHBOARD_PUBLIC_HOSTNAME: zod_1.z.preprocess((value) => cleanOptionalString(value) ?? '', zod_1.z.string().optional().or(zod_1.z.literal(''))),
     MONTHLY_REPORT_ENABLED: zod_1.z.preprocess((value) => asBool(value, false), zod_1.z.boolean().default(false)),
     /** @deprecated Prefer weekly Monday schedule via MONTHLY_REPORT_WEEKDAY / HOUR. Kept for compatibility. */
     MONTHLY_REPORT_DAY: zod_1.z.coerce.number().int().min(1).max(28).default(1),

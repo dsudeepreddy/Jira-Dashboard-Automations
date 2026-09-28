@@ -14,9 +14,23 @@ function dayKey(value) {
 function inMonth(day, startDate, endDate) {
     return Boolean(day && day >= startDate && day <= endDate);
 }
+function isPlaceholderLabel(value) {
+    const n = value.trim().toLowerCase();
+    return !n
+        || n === '(none)'
+        || n === 'none'
+        || n === 'n/a'
+        || n === 'na'
+        || n === '-'
+        || n === 'null'
+        || n === 'undefined'
+        || n === 'unassigned';
+}
+/** Real audit-type labels only — never invent a "(none)" bucket (dashboard omits untagged issues). */
 function cleanTypes(values) {
-    const cleaned = [...new Set((values || []).map((value) => (value || '').trim()).filter(Boolean))];
-    return cleaned.length ? cleaned : ['(none)'];
+    return [...new Set((values || [])
+            .map((value) => (value || '').trim())
+            .filter((value) => !isPlaceholderLabel(value)))];
 }
 function average(values) {
     if (!values.length)
@@ -81,18 +95,19 @@ function buildMonthlyReport(issues, options) {
     const allApps = new Set();
     const allAuditTypes = new Set();
     const breaches = [];
+    const teamAllDays = [];
+    const reviewerAllDays = [];
     for (const issue of issues) {
         const createdDay = dayKey(issue.created);
         const resolvedDay = dayKey(issue.resolved || issue.doneAt);
         const openedInMonth = inMonth(createdDay, startDate, endDate);
         const closedInMonth = inMonth(resolvedDay, startDate, endDate);
         const types = cleanTypes(issue.auditType);
-        const apps = [...new Set((issue.application || []).map((value) => value.trim()).filter(Boolean))];
+        const apps = [...new Set((issue.application || [])
+                .map((value) => value.trim())
+                .filter((value) => !isPlaceholderLabel(value)))];
         apps.forEach((name) => allApps.add(name));
-        types.forEach((type) => {
-            if (type !== '(none)')
-                allAuditTypes.add(type);
-        });
+        types.forEach((type) => allAuditTypes.add(type));
         if (openedInMonth) {
             opened += 1;
             types.forEach((type) => { ensure(type).opened += 1; });
@@ -113,10 +128,12 @@ function buildMonthlyReport(issues, options) {
         }
         const teamCompletedDay = dayKey(issue.underValidationAt);
         if (inMonth(teamCompletedDay, startDate, endDate) && typeof issue.teamSlaDays === 'number') {
+            teamAllDays.push(issue.teamSlaDays);
             types.forEach((type) => { ensure(type).teamDays.push(issue.teamSlaDays); });
         }
         const reviewerCompletedDay = dayKey(issue.doneAt || issue.resolved);
         if (inMonth(reviewerCompletedDay, startDate, endDate) && typeof issue.reviewerSlaDays === 'number') {
+            reviewerAllDays.push(issue.reviewerSlaDays);
             types.forEach((type) => { ensure(type).reviewerDays.push(issue.reviewerSlaDays); });
         }
         if (!(0, analytics_1.isDoneIssue)(issue)) {
@@ -137,7 +154,7 @@ function buildMonthlyReport(issues, options) {
                             summary: issue.summary,
                             assignee: issue.assignee || null,
                             status: issue.status,
-                            auditTypes: types.filter((type) => type !== '(none)'),
+                            auditTypes: types,
                             slaDays: Number(elapsed.toFixed(1)),
                             targetDays: teamTarget,
                             kind: 'team',
@@ -155,7 +172,7 @@ function buildMonthlyReport(issues, options) {
                             summary: issue.summary,
                             assignee: issue.assignee || null,
                             status: issue.status,
-                            auditTypes: types.filter((type) => type !== '(none)'),
+                            auditTypes: types,
                             slaDays: Number(elapsed.toFixed(1)),
                             targetDays: reviewerTarget,
                             kind: 'reviewer',
@@ -165,8 +182,6 @@ function buildMonthlyReport(issues, options) {
             }
         }
     }
-    const teamAll = [...byType.values()].flatMap((row) => row.teamDays);
-    const reviewerAll = [...byType.values()].flatMap((row) => row.reviewerDays);
     return {
         periodLabel,
         startDate,
@@ -193,9 +208,10 @@ function buildMonthlyReport(issues, options) {
             reviewerSlaAvgDays: average(row.reviewerDays),
             reviewerSlaCount: row.reviewerDays.length,
         }))
+            .filter((row) => row.opened > 0 || row.closed > 0 || row.teamSlaCount > 0 || row.reviewerSlaCount > 0)
             .sort((a, b) => (b.opened + b.closed) - (a.opened + a.closed) || a.auditType.localeCompare(b.auditType)),
-        teamSlaOverall: { avgDays: average(teamAll), count: teamAll.length, targetDays: teamTarget },
-        reviewerSlaOverall: { avgDays: average(reviewerAll), count: reviewerAll.length, targetDays: reviewerTarget },
+        teamSlaOverall: { avgDays: average(teamAllDays), count: teamAllDays.length, targetDays: teamTarget },
+        reviewerSlaOverall: { avgDays: average(reviewerAllDays), count: reviewerAllDays.length, targetDays: reviewerTarget },
         topBreaches: breaches.sort((a, b) => b.slaDays - a.slaDays).slice(0, 15),
         topApplications: [...appMap.entries()]
             .map(([name, row]) => ({ name, ...row }))

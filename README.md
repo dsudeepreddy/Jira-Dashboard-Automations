@@ -29,8 +29,8 @@ Edit analytics in `shared/`, then run `npm run sync:shared` (also runs on `backe
 
 | Mode | When | Header label |
 | --- | --- | --- |
-| Live Jira (`DB_ENABLED=false`) | Each dashboard load queries Jira | **Data refreshed** (this request) |
-| Percona snapshot (`DB_ENABLED=true`) | Metrics read from the last successful `POST /api/v1/sync` | **Last snapshot sync** |
+| Live Jira (`DB_ENABLED` off) | Each dashboard load queries Jira | **Data refreshed** (this request) |
+| Percona snapshot (`DB_ENABLED` on) | Metrics read from the last successful `POST /api/v1/sync` | **Last snapshot sync** |
 
 Reload is not a Percona sync. To persist a snapshot, enable the database and call `/api/v1/sync`.
 
@@ -80,41 +80,42 @@ cd backend && npm install && cd ..
 cp .env.example .env.local
 ```
 
-Fill in `JIRA_DOMAIN`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`. Story points and sprint custom fields default to `customfield_10016` / `customfield_10020`; change them if your site uses different IDs. Set `JIRA_BOARD_ID` if Agile board discovery is too broad.
+Fill in `JIRA_DOMAIN`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` in `.env.local` (see [`.env.example`](.env.example)). Adjust `JIRA_STORY_POINTS_FIELD`, `JIRA_SPRINT_FIELD`, and `JIRA_BOARD_ID` if your Jira site uses different values.
 
-The Next.js proxy defaults to `http://localhost:5001/api/v1`. Point the backend at that published port:
+The Next.js proxy expects the backend on the published API port. Start both:
 
 ```bash
 cd backend && PORT=5001 npm run dev
 npm run dev
 ```
 
-UI: http://localhost:3000 · API: http://localhost:5001/api/v1/health
+- UI: `http://localhost:3000`
+- API: `http://localhost:5001/api/v1/health`
 
-If you keep the backend on `5000`, set `BACKEND_API_URL=http://localhost:5000/api/v1` in `.env.local`.
+If the backend listens on a different port, set `BACKEND_API_URL` in `.env.local` accordingly.
 
 ## Podman / Compose
 
-Ensure `.env.local` exists at the repo root (mail + Jira). Required mail block for PhonePe-style relay:
+Ensure `.env.local` exists at the repo root (Jira + optional mail). Typical mail-related variables (assign values only in `.env.local`, never commit them):
 
 ```bash
-SMTP_HOST="smtp.phonepe.com"
-SMTP_PORT="25"
-SMTP_SECURE="false"
-SMTP_REQUIRE_TLS="false"
-SMTP_FROM="noreply@phonepe.com"
-SMTP_PROXY="http://tinyproxy:8888"
-MONTHLY_REPORT_TO="you@phonepe.com"
-MONTHLY_REPORT_ENABLED="true"
-MONTHLY_REPORT_WEEKDAY="1"
-MONTHLY_REPORT_HOUR="9"
-MONTHLY_REPORT_TIMEZONE="Asia/Kolkata"
-SYNC_API_TOKEN="pick-a-long-secret"
+SMTP_HOST
+SMTP_PORT
+SMTP_SECURE
+SMTP_REQUIRE_TLS
+SMTP_FROM
+SMTP_PROXY
+MONTHLY_REPORT_TO
+MONTHLY_REPORT_ENABLED
+MONTHLY_REPORT_WEEKDAY
+MONTHLY_REPORT_HOUR
+MONTHLY_REPORT_TIMEZONE
+SYNC_API_TOKEN
 ```
 
-If your working host curl uses `--ssl-reqd`, set `SMTP_REQUIRE_TLS="true"`.
+If your SMTP relay requires STARTTLS, set `SMTP_REQUIRE_TLS`.
 
-Do **not** put `HTTP_PROXY` / `HTTPS_PROXY` in `.env.local` for tinyproxy — that breaks both Jira (Axios) and the Next.js BFF (`/api/jira`). Use `SMTP_PROXY` only for mail.
+Do **not** put `HTTP_PROXY` / `HTTPS_PROXY` in `.env.local` for an SMTP-only proxy — that breaks both Jira (Axios) and the Next.js BFF (`/api/jira`). Use `SMTP_PROXY` only for mail.
 
 **Deploy (recommended):**
 
@@ -128,11 +129,11 @@ chmod +x scripts/*.sh
 ```bash
 # on laptop
 chmod +x scripts/*.sh
-./scripts/build-and-scp.sh -i ~/.ssh/your-vm.pem root@stg-sreaudit010:/root/Jira-Dashboard-Automations
+./scripts/build-and-scp.sh -i ~/.ssh/your-vm.pem user@your-vm:/path/to/Jira-Dashboard-Automations
 
 # on VM
-cd /root/Jira-Dashboard-Automations
-# ensure .env.local exists
+cd /path/to/Jira-Dashboard-Automations
+# ensure .env.local exists (never commit it)
 ./scripts/load-and-deploy-vm.sh
 ./scripts/send-monthly-report.sh --smtp-test
 ```
@@ -146,9 +147,10 @@ podman-compose -f podman-compose.yml up -d --build
 ./scripts/verify-deploy.sh
 ```
 
-UI: `http://localhost:3000` · API: `http://localhost:5001/api/v1/health`
+- UI: `http://localhost:3000`
+- API: `http://localhost:5001/api/v1/health`
 
-`podman-compose` maps hostname `tinyproxy` → host gateway so the backend container can use the VM’s tinyproxy for **SMTP only** (`SMTP_PROXY`). Do **not** set `HTTP_PROXY`/`HTTPS_PROXY` to tinyproxy — that used to hijack Jira HTTPS via Axios and break dashboards. Leave `JIRA_HTTP_PROXY` empty unless Atlassian itself must go through a proxy. Compose loads `.env.local`. Do not commit that file.
+`podman-compose` can map a host-side SMTP proxy hostname for **SMTP only** (`SMTP_PROXY`). Do **not** set `HTTP_PROXY`/`HTTPS_PROXY` to that proxy. Leave `JIRA_HTTP_PROXY` unset unless Atlassian itself must go through a proxy. Compose loads `.env.local`. Do not commit that file.
 
 **Send mail immediately:**
 
@@ -157,7 +159,7 @@ UI: `http://localhost:3000` · API: `http://localhost:5001/api/v1/health`
 ./scripts/send-monthly-report.sh              # full previous-month report
 ```
 
-After enabling Percona (`DB_ENABLED=true`), wait for health `database.connected: true`, then:
+After enabling Percona (`DB_ENABLED`), wait for health `database.connected: true`, then:
 
 ```bash
 curl -X POST http://localhost:5001/api/v1/sync -H "x-sync-token: $SYNC_API_TOKEN"
@@ -176,7 +178,7 @@ npm run test:api            # with the stack running
 
 ## Environment
 
-See [`.env.example`](.env.example) for the full list. Important variables:
+See [`.env.example`](.env.example) for the full list and placeholder format. Important variables (set values only in `.env.local`):
 
 | Variable | Purpose |
 | --- | --- |
@@ -190,56 +192,46 @@ See [`.env.example`](.env.example) for the full list. Important variables:
 | `STALE_AFTER_MS` | Snapshot older than this is marked stale (Percona mode only) |
 | `DB_ENABLED` | Read/write Percona snapshot |
 | `SMTP_HOST` / `SMTP_FROM` / `MONTHLY_REPORT_TO` | SMTP + stakeholder recipients for monthly email |
-| `MONTHLY_REPORT_ENABLED` | Auto-send previous-month report every Monday at 09:00 (`MONTHLY_REPORT_WEEKDAY=1`, `MONTHLY_REPORT_HOUR=9`, `MONTHLY_REPORT_TIMEZONE=Asia/Kolkata`). Requires `SMTP_HOST`, `SMTP_FROM`, and `MONTHLY_REPORT_TO`. |
-| `MONTHLY_REPORT_WEEKDAY` / `HOUR` / `TIMEZONE` | Schedule slot (default Mon 09:00 IST). Retries each minute during that hour if send fails. |
-| `MONTHLY_REPORT_DASHBOARD_URL` | Optional “Open Dashboard” link in the email (IP hosts are rewritten via `DASHBOARD_PUBLIC_HOSTNAME` or `hostname -a`) |
+| `SMTP_PROXY` | Optional HTTP CONNECT proxy used only for SMTP |
+| `MONTHLY_REPORT_ENABLED` | Enables the weekly auto-send scheduler |
+| `MONTHLY_REPORT_WEEKDAY` / `MONTHLY_REPORT_HOUR` / `MONTHLY_REPORT_TIMEZONE` | Schedule slot (defaults documented in `.env.example`) |
+| `MONTHLY_REPORT_DASHBOARD_URL` | Optional “Open Dashboard” link in the email |
 | `DASHBOARD_PUBLIC_HOSTNAME` | Preferred hostname when the dashboard URL would otherwise show an IP |
-| `NEXT_PUBLIC_GITLAB_URL` / `NEXT_PUBLIC_GITHUB_URL` / `NEXT_PUBLIC_DOCS_URL` | Docs icon in the dashboard header (runtime via `/api/docs-url`; also accepts `GITLAB_URL` / `GITHUB_URL`) |
+| `NEXT_PUBLIC_GITLAB_URL` / `NEXT_PUBLIC_GITHUB_URL` / `NEXT_PUBLIC_DOCS_URL` | Docs icon in the dashboard header (also accepts `GITLAB_URL` / `GITHUB_URL`) |
 
 ### Monthly report
 
-Subject line: `SRE Audit Monthly Report — August 2026` (optional `· PROJECT`).
+Subject line: `SRE Audit Monthly Jira Report — <Month YYYY>` (optional project suffix).
 
-Auto-send: every **Monday at 09:00** in `MONTHLY_REPORT_TIMEZONE` (default `Asia/Kolkata`), covering the **previous calendar month**. The scheduler retries every minute during that hour if SMTP/Jira fails, and persists the last successful Monday key under `/app/data` so container restarts do not double-send the same Monday.
+Auto-send: every configured weekday/hour in `MONTHLY_REPORT_TIMEZONE`, covering the **previous calendar month**. The scheduler retries during that hour if SMTP/Jira fails, and persists the last successful run key under `/app/data` so container restarts do not double-send.
 
-**Required for delivery:** `MONTHLY_REPORT_ENABLED=true`, `SMTP_HOST`, `SMTP_FROM`, `MONTHLY_REPORT_TO` (and usually `SMTP_PROXY` on the VM). Verify with:
+**Required for delivery:** `MONTHLY_REPORT_ENABLED`, `SMTP_HOST`, `SMTP_FROM`, `MONTHLY_REPORT_TO` (and usually `SMTP_PROXY` on locked-down hosts). Verify with:
 
 ```bash
 curl -sS http://localhost:5001/api/v1/health | python3 -m json.tool | less
-# check email.configured=true and monthlyReportSchedule.nextAutoSend
+# confirm email + monthlyReportSchedule fields look healthy
 ./scripts/send-monthly-report.sh --smtp-test
 ```
 
-The HTML mail includes a short 1–2 line summary plus:
-
-1. KPI cards (opened / closed / net / still open / on hold / under validation / SLA averages)  
-2. Colorful HTML bar charts — overall throughput, opened/closed by audit type, top applications, **SRE Audit Team SLA** and **Compliance SLA** by audit type, open-work snapshot  
-3. Outside-SLA ticket list (**SRE Audit Team SLA breaches** and **Compliance SLA breaches**)  
-
-An Excel workbook (`.xlsx`) is attached using the **same layout as the dashboard export** (Summary + one sheet per audit type with tickets), scoped to issues opened or closed in that month. Column headers use the SRE Audit Team / Compliance SLA names.
+The HTML mail includes a short summary plus KPI cards, dual-series charts (opened/closed and SLA by audit type), top applications, and outside-SLA tickets. An Excel workbook is attached using the same layout as the dashboard export, scoped to that month.
 
 **Send immediately (recommended on VM / Podman):**
 
 ```bash
-# Preview exact HTML email (no SMTP) — works on current image via HTTP:
+# Preview HTML email (no SMTP)
 curl -sS --max-time 180 -X POST "http://localhost:5001/api/v1/reports/monthly?dryRun=true" \
   -H "x-sync-token: $SYNC_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}' \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); open("monthly-report-preview.html","w").write(d["html"]); print(d["subject"], "→ monthly-report-preview.html")'
-# open monthly-report-preview.html in a browser
 
-# Optional month: -d '{"month":"2026-08"}'
+# Optional month in the JSON body: {"month":"YYYY-MM"}
 
-# After redeploying backend with latest CLI, dry-run also writes HTML inside the container:
 ./scripts/send-monthly-report.sh --dry-run
-podman cp jira-backend-api:/tmp/sre-audit-monthly-2026-08.html ./monthly-report-preview.html
-
-# send for real
 ./scripts/send-monthly-report.sh
 ```
 
-HTTP alternative (requires `SYNC_API_TOKEN` when `NODE_ENV=production`):
+HTTP alternative (requires `SYNC_API_TOKEN` when running in production):
 
 ```bash
 curl -sS -v --max-time 180 -X POST "http://localhost:5001/api/v1/reports/monthly?dryRun=true" \
@@ -248,11 +240,11 @@ curl -sS -v --max-time 180 -X POST "http://localhost:5001/api/v1/reports/monthly
   -d '{}'
 ```
 
-Jira webhooks can call `POST /api/v1/webhooks/jira?token=YOUR_SYNC_TOKEN`.
+Jira webhooks can call `POST /api/v1/webhooks/jira` with your sync token (header or query param).
 
 ## Percona
 
-Set `DB_ENABLED=true` and point `DB_HOST` at the approved HAProxy/ProxySQL writer. `DB_AUTO_CREATE=true` only when the user may create `DB_NAME`. After schema setup, drop `CREATE`/`ALTER` from the runtime user if policy requires it. Redis remains the cache; dashboard reads come from Percona after a successful sync.
+Enable `DB_ENABLED` and set `DB_HOST` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` in `.env.local`. Use `DB_AUTO_CREATE` only when the DB user may create the schema database. After schema setup, drop `CREATE`/`ALTER` from the runtime user if policy requires it. Redis remains the cache; dashboard reads come from Percona after a successful sync.
 
 ## Security
 

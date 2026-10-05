@@ -1,11 +1,11 @@
+import type { MonthlyReport, ReportKind } from '../shared/monthlyReport';
+import { monthlyReportIntro, periodReportSubject } from '../shared/monthlyReport';
+import { ATLASSIAN_BROWSE_BASE_URL } from '../shared/dashboardContract';
 import {
   COMPLIANCE_SLA_LABEL,
   SRE_AUDIT_TEAM_SLA_LABEL,
   slaKindLabel,
 } from '../shared/slaLabels';
-import type { MonthlyReport } from '../shared/monthlyReport';
-import { monthlyReportIntro, monthlyReportSubject } from '../shared/monthlyReport';
-import { ATLASSIAN_BROWSE_BASE_URL } from '../shared/dashboardContract';
 
 const COLORS = {
   opened: '#0891b2',
@@ -152,9 +152,15 @@ function breachList(report: MonthlyReport, dashboardUrl?: string): string {
     </table>`;
 }
 
-export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: string): { subject: string; text: string; html: string } {
-  const subject = monthlyReportSubject(report);
+export function renderMonthlyReportEmail(
+  report: MonthlyReport,
+  dashboardUrl?: string,
+  kind: ReportKind = 'monthly',
+): { subject: string; text: string; html: string } {
+  const subject = periodReportSubject(report, kind);
   const intro = monthlyReportIntro(report);
+  const headerLabel = kind === 'weekly' ? 'SRE Audit · Weekly Jira Report' : 'SRE Audit · Monthly Jira Report';
+  const scopeNoun = kind === 'weekly' ? 'week' : 'month';
 
   const auditBars = dualSeriesChart(
     report.byAuditType.slice(0, 8).map((row) => ({
@@ -167,7 +173,7 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
       secondaryLabel: 'Closed',
       primaryColor: COLORS.opened,
       secondaryColor: COLORS.closed,
-      emptyLabel: 'No audit-type activity in this month.',
+      emptyLabel: `No audit-type activity in this ${scopeNoun}.`,
     },
   );
 
@@ -182,7 +188,7 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
       secondaryLabel: 'Closed',
       primaryColor: COLORS.opened,
       secondaryColor: COLORS.closed,
-      emptyLabel: 'No application activity tagged this month.',
+      emptyLabel: `No application activity tagged this ${scopeNoun}.`,
     },
   );
 
@@ -197,7 +203,7 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
       secondaryLabel: COMPLIANCE_SLA_LABEL,
       primaryColor: COLORS.team,
       secondaryColor: COLORS.reviewer,
-      emptyLabel: 'No completed SLA handoffs this month.',
+      emptyLabel: `No completed SLA handoffs this ${scopeNoun}.`,
       valueSuffix: 'd',
     },
   );
@@ -218,7 +224,7 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                   <tr>
                     <td style="vertical-align:middle;">
-                      <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;opacity:0.9;">SRE Audit · Monthly Jira Report</div>
+                      <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;opacity:0.9;">${escapeHtml(headerLabel)}</div>
                       <div style="margin-top:8px;font-size:26px;font-weight:700;">${escapeHtml(report.periodLabel)}</div>
                       <div style="margin-top:6px;font-size:13px;opacity:0.9;">${escapeHtml(report.startDate)} → ${escapeHtml(report.endDate)}${report.projectKey ? ` · ${escapeHtml(report.projectKey)}` : ''}</div>
                     </td>
@@ -266,7 +272,7 @@ export function renderMonthlyReportEmail(report: MonthlyReport, dashboardUrl?: s
             <tr><td style="padding:8px 20px 16px;">${breachList(report, dashboardUrl)}</td></tr>
             <tr>
               <td style="padding:0 28px 28px;font-size:12px;color:#64748b;">
-                Full month detail is attached as Excel (same layout as the dashboard export, scoped to this month).
+                Full ${scopeNoun} detail is attached as Excel (same layout as the dashboard export, scoped to this ${scopeNoun}).
               </td>
             </tr>
           </table>

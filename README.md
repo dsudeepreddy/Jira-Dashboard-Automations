@@ -193,42 +193,37 @@ See [`.env.example`](.env.example) for the full list and placeholder format. Imp
 | `DB_ENABLED` | Read/write Percona snapshot |
 | `SMTP_HOST` / `SMTP_FROM` / `MONTHLY_REPORT_TO` | SMTP + stakeholder recipients for monthly email |
 | `SMTP_PROXY` | Optional HTTP CONNECT proxy used only for SMTP |
-| `MONTHLY_REPORT_ENABLED` | Enables the weekly auto-send scheduler |
-| `MONTHLY_REPORT_WEEKDAY` / `MONTHLY_REPORT_HOUR` / `MONTHLY_REPORT_TIMEZONE` | Schedule slot (defaults documented in `.env.example`) |
+| `MONTHLY_REPORT_ENABLED` | Enables monthly auto-send on `MONTHLY_REPORT_DAY` at `MONTHLY_REPORT_HOUR` |
+| `MONTHLY_REPORT_DAY` / `MONTHLY_REPORT_HOUR` / `MONTHLY_REPORT_TIMEZONE` | Monthly schedule (defaults: day 1, 09:00, Asia/Kolkata) |
+| `WEEKLY_REPORT_ENABLED` | Enables weekly auto-send (previous Mon–Sun) |
+| `WEEKLY_REPORT_WEEKDAY` / `WEEKLY_REPORT_HOUR` | Weekly schedule (defaults: Monday 09:00, same timezone) |
+| `WEEKLY_REPORT_TO` | Optional weekly recipients (falls back to `MONTHLY_REPORT_TO`) |
 | `MONTHLY_REPORT_DASHBOARD_URL` | Optional “Open Dashboard” link in the email |
 | `DASHBOARD_PUBLIC_HOSTNAME` | Preferred hostname when the dashboard URL would otherwise show an IP |
 | `NEXT_PUBLIC_GITLAB_URL` / `NEXT_PUBLIC_GITHUB_URL` / `NEXT_PUBLIC_DOCS_URL` | Docs icon in the dashboard header (also accepts `GITLAB_URL` / `GITHUB_URL`) |
 
-### Monthly report
+### Monthly + weekly reports
 
-Subject line: `SRE Audit Monthly Jira Report — <Month YYYY>` (optional project suffix).
+- **Monthly:** day 1 at 09:00 (configurable) covering the **previous calendar month**.
+- **Weekly:** every Monday at 09:00 covering the **previous Mon–Sun week**.
 
-Auto-send: every configured weekday/hour in `MONTHLY_REPORT_TIMEZONE`, covering the **previous calendar month**. The scheduler retries during that hour if SMTP/Jira fails, and persists the last successful run key under `/app/data` so container restarts do not double-send.
-
-**Required for delivery:** `MONTHLY_REPORT_ENABLED`, `SMTP_HOST`, `SMTP_FROM`, `MONTHLY_REPORT_TO` (and usually `SMTP_PROXY` on locked-down hosts). Verify with:
+**Required for delivery:** `MONTHLY_REPORT_ENABLED` and/or `WEEKLY_REPORT_ENABLED`, plus `SMTP_HOST`, `SMTP_FROM`, `MONTHLY_REPORT_TO` (and usually `SMTP_PROXY` on locked-down hosts). Verify with:
 
 ```bash
 curl -sS http://localhost:5001/api/v1/health | python3 -m json.tool | less
-# confirm email + monthlyReportSchedule fields look healthy
 ./scripts/send-monthly-report.sh --smtp-test
 ```
 
-The HTML mail includes a short summary plus KPI cards, dual-series charts (opened/closed and SLA by audit type), top applications, and outside-SLA tickets. An Excel workbook is attached using the same layout as the dashboard export, scoped to that month.
-
-**Send immediately (recommended on VM / Podman):**
+Send now:
 
 ```bash
-# Preview HTML email (no SMTP)
-curl -sS --max-time 180 -X POST "http://localhost:5001/api/v1/reports/monthly?dryRun=true" \
-  -H "x-sync-token: $SYNC_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{}' \
-  | python3 -c 'import json,sys; d=json.load(sys.stdin); open("monthly-report-preview.html","w").write(d["html"]); print(d["subject"], "→ monthly-report-preview.html")'
+# Monthly (previous month)
+cd backend && npm run build && npm run report:monthly -- --dry-run
+cd backend && npm run report:monthly
 
-# Optional month in the JSON body: {"month":"YYYY-MM"}
-
-./scripts/send-monthly-report.sh --dry-run
-./scripts/send-monthly-report.sh
+# Weekly (previous Mon–Sun)
+cd backend && npm run report:monthly -- --weekly --dry-run
+cd backend && npm run report:monthly -- --weekly
 ```
 
 HTTP alternative (requires `SYNC_API_TOKEN` when running in production):

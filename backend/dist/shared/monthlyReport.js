@@ -2,9 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.previousMonthWindow = previousMonthWindow;
 exports.monthWindowFromYm = monthWindowFromYm;
-exports.buildMonthlyReport = buildMonthlyReport;
+exports.previousWeekWindow = previousWeekWindow;
+exports.periodReportSubject = periodReportSubject;
 exports.monthlyReportSubject = monthlyReportSubject;
+exports.weeklyReportSubject = weeklyReportSubject;
 exports.monthlyReportIntro = monthlyReportIntro;
+exports.buildMonthlyReport = buildMonthlyReport;
 const analytics_1 = require("./analytics");
 const slaLabels_1 = require("./slaLabels");
 function dayKey(value) {
@@ -73,6 +76,75 @@ function monthWindowFromYm(yearMonth) {
         endDate: end.toISOString().slice(0, 10),
         periodLabel: start.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
     };
+}
+/**
+ * Previous Mon–Sun week in `timeZone`, relative to `now`.
+ * Example: on Monday 5 Oct 2026 IST → 2026-09-28 → 2026-10-04.
+ */
+function previousWeekWindow(now = new Date(), timeZone = 'Asia/Kolkata') {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        weekday: 'short',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hourCycle: 'h23',
+    }).formatToParts(now);
+    const read = (type) => parts.find((part) => part.type === type)?.value || '';
+    const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const weekday = weekdayMap[read('weekday')] ?? 1;
+    const year = Number(read('year'));
+    const month = Number(read('month'));
+    const day = Number(read('day'));
+    const noon = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    const daysSinceMonday = (weekday + 6) % 7;
+    const thisMonday = new Date(noon);
+    thisMonday.setUTCDate(thisMonday.getUTCDate() - daysSinceMonday);
+    const prevMonday = new Date(thisMonday);
+    prevMonday.setUTCDate(prevMonday.getUTCDate() - 7);
+    const prevSunday = new Date(thisMonday);
+    prevSunday.setUTCDate(prevSunday.getUTCDate() - 1);
+    const startDate = prevMonday.toISOString().slice(0, 10);
+    const endDate = prevSunday.toISOString().slice(0, 10);
+    const startLabel = prevMonday.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const endLabel = prevSunday.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+    return {
+        startDate,
+        endDate,
+        periodLabel: `${startLabel} – ${endLabel}`,
+    };
+}
+function periodReportSubject(report, kind = 'monthly') {
+    const project = report.projectKey ? ` · ${report.projectKey}` : '';
+    const title = kind === 'weekly' ? 'SRE Audit Weekly Jira Report' : 'SRE Audit Monthly Jira Report';
+    return `${title} — ${report.periodLabel}${project}`;
+}
+function monthlyReportSubject(report) {
+    return periodReportSubject(report, 'monthly');
+}
+function weeklyReportSubject(report) {
+    return periodReportSubject(report, 'weekly');
+}
+function monthlyReportIntro(report) {
+    const net = report.totals.netChange;
+    const netText = net === 0
+        ? 'opened and closed were balanced'
+        : net > 0
+            ? `backlog +${net}`
+            : `backlog −${Math.abs(net)}`;
+    const team = report.teamSlaOverall.avgDays == null
+        ? `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} n/a`
+        : `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} ${report.teamSlaOverall.avgDays}d`;
+    const reviewer = report.reviewerSlaOverall.avgDays == null
+        ? `${slaLabels_1.COMPLIANCE_SLA_LABEL} n/a`
+        : `${slaLabels_1.COMPLIANCE_SLA_LABEL} ${report.reviewerSlaOverall.avgDays}d`;
+    const breaches = report.topBreaches.length
+        ? `${report.topBreaches.length} outside SLA`
+        : 'no open SLA breaches';
+    return [
+        `${report.periodLabel}: opened ${report.totals.opened}, closed ${report.totals.closed} (${netText}).`,
+        `${team} · ${reviewer} · ${breaches}.`,
+    ].join(' ');
 }
 function buildMonthlyReport(issues, options) {
     const now = options.now || new Date();
@@ -218,29 +290,4 @@ function buildMonthlyReport(issues, options) {
             .sort((a, b) => (b.opened + b.closed) - (a.opened + a.closed))
             .slice(0, 10),
     };
-}
-function monthlyReportSubject(report) {
-    const project = report.projectKey ? ` · ${report.projectKey}` : '';
-    return `SRE Audit Monthly Jira Report — ${report.periodLabel}${project}`;
-}
-function monthlyReportIntro(report) {
-    const net = report.totals.netChange;
-    const netText = net === 0
-        ? 'opened and closed were balanced'
-        : net > 0
-            ? `backlog +${net}`
-            : `backlog −${Math.abs(net)}`;
-    const team = report.teamSlaOverall.avgDays == null
-        ? `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} n/a`
-        : `${slaLabels_1.SRE_AUDIT_TEAM_SLA_LABEL} ${report.teamSlaOverall.avgDays}d`;
-    const reviewer = report.reviewerSlaOverall.avgDays == null
-        ? `${slaLabels_1.COMPLIANCE_SLA_LABEL} n/a`
-        : `${slaLabels_1.COMPLIANCE_SLA_LABEL} ${report.reviewerSlaOverall.avgDays}d`;
-    const breaches = report.topBreaches.length
-        ? `${report.topBreaches.length} outside SLA`
-        : 'no open SLA breaches';
-    return [
-        `${report.periodLabel}: opened ${report.totals.opened}, closed ${report.totals.closed} (${netText}).`,
-        `${team} · ${reviewer} · ${breaches}.`,
-    ].join(' ');
 }

@@ -9,11 +9,12 @@ import { getMetricsHandler } from './controllers/metricsController';
 import { getIssuesHandler } from './controllers/issuesController';
 import { getExportIssuesHandler } from './controllers/exportController';
 import { runJiraSync, syncJiraHandler, jiraWebhookHandler } from './controllers/syncController';
-import { sendMonthlyReportHandler } from './controllers/reportController';
-import { sendMonthlyReport } from './services/monthlyReportService';
+import { sendMonthlyReportHandler, sendWeeklyReportHandler } from './controllers/reportController';
+import { sendMonthlyReport, sendWeeklyReport } from './services/monthlyReportService';
 import {
   isMonthlyReportDue,
-  mondayScheduleKey,
+  isWeeklyReportDue,
+  localDateKey,
   readScheduleState,
   reportPeriodKey,
   shouldSkipAlreadySent,
@@ -60,13 +61,22 @@ app.get('/api/v1/health', async (req, res) => {
     email: emailDiagnostics(),
     monthlyReportSchedule: {
       enabled: env.MONTHLY_REPORT_ENABLED,
-      weekday: env.MONTHLY_REPORT_WEEKDAY,
+      day: env.MONTHLY_REPORT_DAY,
       hour: env.MONTHLY_REPORT_HOUR,
       timezone: env.MONTHLY_REPORT_TIMEZONE,
-      nextAutoSend: `Every weekday=${env.MONTHLY_REPORT_WEEKDAY} (1=Mon) at ${String(env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
-      lastMondayKey: scheduleState.lastMondayKey || null,
+      nextAutoSend: `Every month on day=${env.MONTHLY_REPORT_DAY} at ${String(env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
+      lastMonthlyKey: scheduleState.lastMonthlyKey || scheduleState.lastMondayKey || null,
       lastPeriodKey: scheduleState.lastPeriodKey || null,
       lastSentAt: scheduleState.lastSentAt || null,
+    },
+    weeklyReportSchedule: {
+      enabled: env.WEEKLY_REPORT_ENABLED,
+      weekday: env.WEEKLY_REPORT_WEEKDAY,
+      hour: env.WEEKLY_REPORT_HOUR,
+      timezone: env.MONTHLY_REPORT_TIMEZONE,
+      nextAutoSend: `Every weekday=${env.WEEKLY_REPORT_WEEKDAY} (1=Mon) at ${String(env.WEEKLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
+      lastWeeklyKey: scheduleState.lastWeeklyKey || null,
+      lastWeeklySentAt: scheduleState.lastWeeklySentAt || null,
     },
     database,
   };
@@ -93,6 +103,7 @@ app.get('/api/v1/export/issues', requireDashboardToken, getExportIssuesHandler);
 app.post('/api/v1/sync', syncLimiter, requireSyncToken, syncJiraHandler);
 app.post('/api/v1/webhooks/jira', syncLimiter, requireSyncToken, jiraWebhookHandler);
 app.post('/api/v1/reports/monthly', syncLimiter, requireSyncToken, sendMonthlyReportHandler);
+app.post('/api/v1/reports/weekly', syncLimiter, requireSyncToken, sendWeeklyReportHandler);
 app.get('/api/v1/observability/metrics', (_req, res) => {
   res.type('text/plain').send(metricsText());
 });
@@ -117,33 +128,51 @@ async function startScheduledSync() {
   setInterval(() => { void tick(false); }, env.SYNC_INTERVAL_MS);
 }
 
-let loggedWaitingForReportSlot = false;
+let loggedWaitingForMonthly = false;
+let loggedWaitingForWeekly = false;
 let loggedEmailNotConfigured = false;
 
 async function startMonthlyReportScheduler() {
   if (!env.MONTHLY_REPORT_ENABLED) {
     console.log(JSON.stringify({
       event: 'monthly_report_scheduler_disabled',
-      detail: 'Set MONTHLY_REPORT_ENABLED=true to auto-send every Monday at MONTHLY_REPORT_HOUR.',
+      detail: 'Set MONTHLY_REPORT_ENABLED=true to auto-send on MONTHLY_REPORT_DAY at MONTHLY_REPORT_HOUR.',
     }));
-    return;
+  } else {
+    console.log(JSON.stringify({
+      event: 'monthly_report_scheduler_started',
+      timezone: env.MONTHLY_REPORT_TIMEZONE,
+      day: env.MONTHLY_REPORT_DAY,
+      hour: env.MONTHLY_REPORT_HOUR,
+      emailConfigured: isEmailConfigured(),
+      nextAutoSend: `Every month on day=${env.MONTHLY_REPORT_DAY} at ${String(env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
+    }));
   }
 
-  console.log(JSON.stringify({
-    event: 'monthly_report_scheduler_started',
-    timezone: env.MONTHLY_REPORT_TIMEZONE,
-    weekday: env.MONTHLY_REPORT_WEEKDAY,
-    hour: env.MONTHLY_REPORT_HOUR,
-    emailConfigured: isEmailConfigured(),
-    nextAutoSend: `Every weekday=${env.MONTHLY_REPORT_WEEKDAY} (1=Mon) at ${String(env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
-  }));
+  if (!env.WEEKLY_REPORT_ENABLED) {
+    console.log(JSON.stringify({
+      event: 'weekly_report_scheduler_disabled',
+      detail: 'Set WEEKLY_REPORT_ENABLED=true to auto-send every Monday at WEEKLY_REPORT_HOUR.',
+    }));
+  } else {
+    console.log(JSON.stringify({
+      event: 'weekly_report_scheduler_started',
+      timezone: env.MONTHLY_REPORT_TIMEZONE,
+      weekday: env.WEEKLY_REPORT_WEEKDAY,
+      hour: env.WEEKLY_REPORT_HOUR,
+      emailConfigured: isEmailConfigured(),
+      nextAutoSend: `Every weekday=${env.WEEKLY_REPORT_WEEKDAY} (1=Mon) at ${String(env.WEEKLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
+    }));
+  }
+
+  if (!env.MONTHLY_REPORT_ENABLED && !env.WEEKLY_REPORT_ENABLED) return;
 
   const tick = async () => {
     if (!isEmailConfigured()) {
       if (!loggedEmailNotConfigured) {
         loggedEmailNotConfigured = true;
         console.log(JSON.stringify({
-          event: 'monthly_report_skipped',
+          event: 'report_scheduler_skipped',
           reason: 'email_not_configured',
           detail: 'Set SMTP_HOST, SMTP_FROM, and MONTHLY_REPORT_TO (plus SMTP_PROXY if needed).',
         }));
@@ -154,61 +183,112 @@ async function startMonthlyReportScheduler() {
 
     const now = new Date();
     const local = zonedParts(now, env.MONTHLY_REPORT_TIMEZONE);
-    const dueWeekday = env.MONTHLY_REPORT_WEEKDAY;
-    const dueHour = env.MONTHLY_REPORT_HOUR;
-
-    if (!isMonthlyReportDue(local, dueWeekday, dueHour)) {
-      if (!loggedWaitingForReportSlot) {
-        loggedWaitingForReportSlot = true;
-        console.log(JSON.stringify({
-          event: 'monthly_report_waiting',
-          timezone: env.MONTHLY_REPORT_TIMEZONE,
-          weekday: local.weekday,
-          hour: local.hour,
-          dueWeekday,
-          dueHour,
-          nextAutoSend: `Every weekday=${dueWeekday} (1=Mon) at ${String(dueHour).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}. To send now: POST /api/v1/reports/monthly`,
-        }));
-      }
-      return;
-    }
-    loggedWaitingForReportSlot = false;
-
-    const mondayKey = mondayScheduleKey(local);
-    const periodKey = reportPeriodKey(now);
     const state = readScheduleState();
-    if (shouldSkipAlreadySent({
-      mondayKey,
-      periodKey,
-      state,
-      oncePerPeriod: false,
-    })) {
-      return;
+
+    if (env.MONTHLY_REPORT_ENABLED) {
+      const dueDay = env.MONTHLY_REPORT_DAY;
+      const dueHour = env.MONTHLY_REPORT_HOUR;
+      if (!isMonthlyReportDue(local, dueDay, dueHour)) {
+        if (!loggedWaitingForMonthly) {
+          loggedWaitingForMonthly = true;
+          console.log(JSON.stringify({
+            event: 'monthly_report_waiting',
+            timezone: env.MONTHLY_REPORT_TIMEZONE,
+            day: local.day,
+            hour: local.hour,
+            dueDay,
+            dueHour,
+            nextAutoSend: `Every month on day=${dueDay} at ${String(dueHour).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
+          }));
+        }
+      } else {
+        loggedWaitingForMonthly = false;
+        const scheduleKey = localDateKey(local);
+        const periodKey = reportPeriodKey(now);
+        if (!shouldSkipAlreadySent({
+          scheduleKey,
+          periodKey,
+          state,
+          oncePerPeriod: true,
+          kind: 'monthly',
+        })) {
+          try {
+            const result = await sendMonthlyReport({});
+            writeScheduleState({
+              lastMonthlyKey: scheduleKey,
+              lastPeriodKey: periodKey,
+              lastSentAt: new Date().toISOString(),
+            });
+            console.log(JSON.stringify({
+              event: 'monthly_report_sent',
+              subject: result.subject,
+              recipients: result.recipients,
+              messageId: 'messageId' in result ? result.messageId : undefined,
+              scheduleKey,
+              periodKey,
+            }));
+          } catch (error) {
+            console.error(JSON.stringify({
+              event: 'monthly_report_failed',
+              scheduleKey,
+              periodKey,
+              error: error instanceof Error ? error.message : 'unknown',
+              detail: 'Will retry each minute while still in the due hour.',
+            }));
+          }
+        }
+      }
     }
 
-    try {
-      const result = await sendMonthlyReport({});
-      writeScheduleState({
-        lastMondayKey: mondayKey,
-        lastPeriodKey: periodKey,
-        lastSentAt: new Date().toISOString(),
-      });
-      console.log(JSON.stringify({
-        event: 'monthly_report_sent',
-        subject: result.subject,
-        recipients: result.recipients,
-        messageId: 'messageId' in result ? result.messageId : undefined,
-        scheduleKey: mondayKey,
-        periodKey,
-      }));
-    } catch (error) {
-      console.error(JSON.stringify({
-        event: 'monthly_report_failed',
-        scheduleKey: mondayKey,
-        periodKey,
-        error: error instanceof Error ? error.message : 'unknown',
-        detail: 'Will retry each minute while still in the due hour.',
-      }));
+    if (env.WEEKLY_REPORT_ENABLED) {
+      const dueWeekday = env.WEEKLY_REPORT_WEEKDAY;
+      const dueHour = env.WEEKLY_REPORT_HOUR;
+      if (!isWeeklyReportDue(local, dueWeekday, dueHour)) {
+        if (!loggedWaitingForWeekly) {
+          loggedWaitingForWeekly = true;
+          console.log(JSON.stringify({
+            event: 'weekly_report_waiting',
+            timezone: env.MONTHLY_REPORT_TIMEZONE,
+            weekday: local.weekday,
+            hour: local.hour,
+            dueWeekday,
+            dueHour,
+            nextAutoSend: `Every weekday=${dueWeekday} (1=Mon) at ${String(dueHour).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
+          }));
+        }
+      } else {
+        loggedWaitingForWeekly = false;
+        const scheduleKey = localDateKey(local);
+        const latestState = readScheduleState();
+        if (!shouldSkipAlreadySent({
+          scheduleKey,
+          state: latestState,
+          kind: 'weekly',
+        })) {
+          try {
+            const result = await sendWeeklyReport({});
+            writeScheduleState({
+              lastWeeklyKey: scheduleKey,
+              lastWeeklySentAt: new Date().toISOString(),
+            });
+            console.log(JSON.stringify({
+              event: 'weekly_report_sent',
+              subject: result.subject,
+              recipients: result.recipients,
+              messageId: 'messageId' in result ? result.messageId : undefined,
+              scheduleKey,
+              periodLabel: result.report.periodLabel,
+            }));
+          } catch (error) {
+            console.error(JSON.stringify({
+              event: 'weekly_report_failed',
+              scheduleKey,
+              error: error instanceof Error ? error.message : 'unknown',
+              detail: 'Will retry each minute while still in the due hour.',
+            }));
+          }
+        }
+      }
     }
   };
   setInterval(() => { void tick(); }, 60 * 1000);
@@ -237,9 +317,12 @@ async function start() {
       database: env.DB_ENABLED ? 'percona' : 'disabled',
       syncIntervalMs: env.SYNC_INTERVAL_MS,
       monthlyReportEnabled: env.MONTHLY_REPORT_ENABLED,
-      monthlyReportWeekday: env.MONTHLY_REPORT_WEEKDAY,
+      monthlyReportDay: env.MONTHLY_REPORT_DAY,
       monthlyReportHour: env.MONTHLY_REPORT_HOUR,
       monthlyReportTimezone: env.MONTHLY_REPORT_TIMEZONE,
+      weeklyReportEnabled: env.WEEKLY_REPORT_ENABLED,
+      weeklyReportWeekday: env.WEEKLY_REPORT_WEEKDAY,
+      weeklyReportHour: env.WEEKLY_REPORT_HOUR,
       emailConfigured: isEmailConfigured(),
       smtpHostSet: Boolean(env.SMTP_HOST),
       smtpPort: env.SMTP_PORT,

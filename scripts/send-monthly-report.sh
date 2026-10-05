@@ -26,26 +26,28 @@ CONTAINER="${BACKEND_CONTAINER:-jira-backend-api}"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/send-monthly-report.sh [--http|--container] [--smtp-test|--dry-run] [--month YYYY-MM] [--to email] [--project KEY]
+Usage: scripts/send-monthly-report.sh [--http|--container] [--smtp-test|--dry-run] [--weekly] [--month YYYY-MM] [--to email] [--project KEY]
 
   --container   Run Node CLI inside backend container (default, no auth needed)
-  --http        Call POST /api/v1/reports/monthly on the API
+  --http        Call POST /api/v1/reports/monthly (or /weekly with --weekly)
   --smtp-test   Send a tiny SMTP probe only (no Jira). Use this first.
-  --dry-run     Build full monthly report HTML/text only; do not send SMTP
-                Writes /tmp/sre-audit-monthly-YYYY-MM.html inside the container
+  --dry-run     Build full report HTML/text only; do not send SMTP
+  --weekly      Send/build the weekly (previous Mon–Sun) report instead of monthly
   --out PATH    With --dry-run, write HTML to PATH instead of /tmp/...
-  --month       Report month (default: previous calendar month)
+  --month       Monthly report month (default: previous calendar month)
   --to          Override recipients
   --project     Override project key
 EOF
 }
 
+WEEKLY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --http) MODE="http"; shift ;;
     --container) MODE="container"; shift ;;
     --smtp-test|--smtpTest) SMTP_TEST=1; shift ;;
     --dry-run|--dryRun) DRY_RUN=1; shift ;;
+    --weekly|--week) WEEKLY=1; shift ;;
     --month) MONTH="${2:-}"; shift 2 ;;
     --to) TO="${2:-}"; shift 2 ;;
     --project) PROJECT="${2:-}"; shift 2 ;;
@@ -59,6 +61,7 @@ if [[ "$MODE" == "container" ]]; then
   ARGS=()
   [[ "$SMTP_TEST" == "1" ]] && ARGS+=(--smtp-test)
   [[ "$DRY_RUN" == "1" ]] && ARGS+=(--dry-run)
+  [[ "$WEEKLY" == "1" ]] && ARGS+=(--weekly)
   [[ -n "$MONTH" ]] && ARGS+=(--month "$MONTH")
   [[ -n "$TO" ]] && ARGS+=(--to "$TO")
   [[ -n "$PROJECT" ]] && ARGS+=(--project "$PROJECT")
@@ -72,7 +75,11 @@ fi
 
 QUERY=""
 [[ "$DRY_RUN" == "1" ]] && QUERY="dryRun=true"
-URL="${BASE_URL%/}/reports/monthly"
+if [[ "$WEEKLY" == "1" ]]; then
+  URL="${BASE_URL%/}/reports/weekly"
+else
+  URL="${BASE_URL%/}/reports/monthly"
+fi
 [[ -n "$QUERY" ]] && URL="${URL}?${QUERY}"
 
 BODY='{'

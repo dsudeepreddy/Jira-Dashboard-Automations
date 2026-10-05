@@ -25,11 +25,14 @@ function emailDiagnostics() {
         proxy: env_1.env.SMTP_PROXY || 'not-configured',
         user: env_1.env.SMTP_USER ? (0, env_1.maskSecret)(env_1.env.SMTP_USER) : 'not-configured',
         monthlyReportEnabled: env_1.env.MONTHLY_REPORT_ENABLED,
+        weeklyReportEnabled: env_1.env.WEEKLY_REPORT_ENABLED,
         schedule: {
-            weekday: env_1.env.MONTHLY_REPORT_WEEKDAY,
-            hour: env_1.env.MONTHLY_REPORT_HOUR,
+            monthlyDay: env_1.env.MONTHLY_REPORT_DAY,
+            monthlyHour: env_1.env.MONTHLY_REPORT_HOUR,
+            weeklyWeekday: env_1.env.WEEKLY_REPORT_WEEKDAY,
+            weeklyHour: env_1.env.WEEKLY_REPORT_HOUR,
             timezone: env_1.env.MONTHLY_REPORT_TIMEZONE,
-            summary: `Every weekday=${env_1.env.MONTHLY_REPORT_WEEKDAY} (1=Mon) at ${String(env_1.env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env_1.env.MONTHLY_REPORT_TIMEZONE}`,
+            summary: `Monthly: day=${env_1.env.MONTHLY_REPORT_DAY} at ${String(env_1.env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00; Weekly: weekday=${env_1.env.WEEKLY_REPORT_WEEKDAY} (1=Mon) at ${String(env_1.env.WEEKLY_REPORT_HOUR).padStart(2, '0')}:00 ${env_1.env.MONTHLY_REPORT_TIMEZONE}`,
         },
     };
 }
@@ -160,5 +163,8 @@ async function sendMail(input) {
             error: error instanceof Error ? error.message : 'unknown',
         }));
         throw error;
+    }
+    finally {
+        transporter.close();
     }
 }

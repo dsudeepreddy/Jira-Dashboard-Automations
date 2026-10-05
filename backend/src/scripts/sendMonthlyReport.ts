@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { sendMonthlyReport, sendSmtpTestEmail } from '../services/monthlyReportService';
+import { sendMonthlyReport, sendSmtpTestEmail, sendWeeklyReport } from '../services/monthlyReportService';
 import { emailDiagnostics, isEmailConfigured } from '../services/emailClient';
 import { env } from '../config/env';
 
@@ -17,17 +17,20 @@ function hasFlag(flag: string): boolean {
 async function main() {
   const dryRun = hasFlag('--dry-run') || hasFlag('--dryRun');
   const smtpTest = hasFlag('--smtp-test') || hasFlag('--smtpTest');
+  const weekly = hasFlag('--weekly') || hasFlag('--week');
   const month = argValue('--month');
   const projectKey = argValue('--project') || argValue('--projectKey');
   const to = argValue('--to');
   const outPath = argValue('--out') || argValue('--output');
+  const kind = weekly ? 'weekly' : 'monthly';
 
   console.log(JSON.stringify({
-    event: 'monthly_report_cli_start',
+    event: `${kind}_report_cli_start`,
     mode: smtpTest ? 'smtp-test' : dryRun ? 'dry-run' : 'send',
+    kind,
     month: month || null,
     projectKey: projectKey || env.MONTHLY_REPORT_PROJECT_KEY || env.JIRA_PROJECT_KEY || null,
-    to: to || env.MONTHLY_REPORT_TO || null,
+    to: to || (weekly ? (env.WEEKLY_REPORT_TO || env.MONTHLY_REPORT_TO) : env.MONTHLY_REPORT_TO) || null,
     outPath: outPath || null,
     email: emailDiagnostics(),
     note: smtpTest
@@ -38,7 +41,7 @@ async function main() {
   if (smtpTest) {
     if (!isEmailConfigured() && !to) {
       console.error(JSON.stringify({
-        event: 'monthly_report_cli_failed',
+        event: 'report_cli_failed',
         error: 'Email is not configured. Set SMTP_HOST, SMTP_FROM, MONTHLY_REPORT_TO (and SMTP_PROXY if needed).',
       }));
       process.exit(2);
@@ -46,7 +49,7 @@ async function main() {
     const started = Date.now();
     const result = await sendSmtpTestEmail({ to });
     console.log(JSON.stringify({
-      event: 'monthly_report_cli_smtp_test_sent',
+      event: 'report_cli_smtp_test_sent',
       durationMs: Date.now() - started,
       subject: result.subject,
       recipients: result.recipients,
@@ -58,31 +61,38 @@ async function main() {
 
   if (!dryRun && !isEmailConfigured()) {
     console.error(JSON.stringify({
-      event: 'monthly_report_cli_failed',
+      event: 'report_cli_failed',
       error: 'Email is not configured. Set SMTP_HOST, SMTP_FROM, MONTHLY_REPORT_TO (and SMTP_PROXY if needed).',
     }));
     process.exit(2);
   }
 
   const started = Date.now();
-  const result = await sendMonthlyReport({ dryRun, month, projectKey, to });
+  const result = weekly
+    ? await sendWeeklyReport({ dryRun, projectKey, to })
+    : await sendMonthlyReport({ dryRun, month, projectKey, to });
+
   console.log(JSON.stringify({
-    event: dryRun ? 'monthly_report_cli_preview' : 'monthly_report_cli_sent',
+    event: dryRun ? `${kind}_report_cli_preview` : `${kind}_report_cli_sent`,
     durationMs: Date.now() - started,
     subject: result.subject,
     recipients: result.recipients,
     totals: result.report.totals,
     periodLabel: result.report.periodLabel,
+    startDate: result.report.startDate,
+    endDate: result.report.endDate,
     messageId: 'messageId' in result ? result.messageId : undefined,
     accepted: 'accepted' in result ? result.accepted : undefined,
   }));
 
   if (result.dryRun) {
-    const file = outPath
-      || path.join('/tmp', `sre-audit-monthly-${result.report.startDate.slice(0, 7)}.html`);
+    const defaultName = kind === 'weekly'
+      ? `sre-audit-weekly-${result.report.startDate}_to_${result.report.endDate}.html`
+      : `sre-audit-monthly-${result.report.startDate.slice(0, 7)}.html`;
+    const file = outPath || path.join('/tmp', defaultName);
     fs.writeFileSync(file, result.html, 'utf8');
     console.log(JSON.stringify({
-      event: 'monthly_report_html_written',
+      event: `${kind}_report_html_written`,
       path: file,
       subject: result.subject,
       bytes: Buffer.byteLength(result.html, 'utf8'),
@@ -90,26 +100,28 @@ async function main() {
     const xlsxPath = file.replace(/\.html?$/i, '.xlsx');
     fs.writeFileSync(xlsxPath, result.attachment.content);
     console.log(JSON.stringify({
-      event: 'monthly_report_xlsx_written',
+      event: `${kind}_report_xlsx_written`,
       path: xlsxPath,
       filename: result.attachment.filename,
       bytes: result.attachment.bytes,
     }));
     console.log(`HTML preview written to ${file}`);
     console.log(`Excel preview written to ${xlsxPath}`);
-    console.log('Copy out of the container, e.g.:');
-    console.log(`  podman cp jira-backend-api:${file} ./monthly-report-preview.html`);
-    console.log('Then open monthly-report-preview.html in a browser.');
     console.log('--- text preview (first 1500 chars) ---');
     console.log((result.text || '').slice(0, 1500));
   }
 }
 
-main().catch((error) => {
-  console.error(JSON.stringify({
-    event: 'monthly_report_cli_failed',
-    error: error instanceof Error ? error.message : String(error),
-    stack: error instanceof Error ? error.stack : undefined,
-  }));
-  process.exit(1);
-});
+main()
+  .then(() => {
+    // Force exit: open DB/SMTP handles otherwise keep the CLI process alive.
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(JSON.stringify({
+      event: 'report_cli_failed',
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    }));
+    process.exit(1);
+  });

@@ -19,11 +19,14 @@ export function emailDiagnostics() {
     proxy: env.SMTP_PROXY || 'not-configured',
     user: env.SMTP_USER ? maskSecret(env.SMTP_USER) : 'not-configured',
     monthlyReportEnabled: env.MONTHLY_REPORT_ENABLED,
+    weeklyReportEnabled: env.WEEKLY_REPORT_ENABLED,
     schedule: {
-      weekday: env.MONTHLY_REPORT_WEEKDAY,
-      hour: env.MONTHLY_REPORT_HOUR,
+      monthlyDay: env.MONTHLY_REPORT_DAY,
+      monthlyHour: env.MONTHLY_REPORT_HOUR,
+      weeklyWeekday: env.WEEKLY_REPORT_WEEKDAY,
+      weeklyHour: env.WEEKLY_REPORT_HOUR,
       timezone: env.MONTHLY_REPORT_TIMEZONE,
-      summary: `Every weekday=${env.MONTHLY_REPORT_WEEKDAY} (1=Mon) at ${String(env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
+      summary: `Monthly: day=${env.MONTHLY_REPORT_DAY} at ${String(env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00; Weekly: weekday=${env.WEEKLY_REPORT_WEEKDAY} (1=Mon) at ${String(env.WEEKLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
     },
   };
 }
@@ -183,5 +186,7 @@ export async function sendMail(input: {
       error: error instanceof Error ? error.message : 'unknown',
     }));
     throw error;
+  } finally {
+    transporter.close();
   }
 }

@@ -32,12 +32,23 @@ export function zonedParts(now: Date, timeZone: string): ZonedParts {
   };
 }
 
-/** One auto-send per local calendar Monday (YYYY-MM-DD of that Monday). */
-export function mondayScheduleKey(local: ZonedParts): string {
+/** Local calendar date key YYYY-MM-DD. */
+export function localDateKey(local: ZonedParts): string {
   return `${local.year}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
 }
 
-export function isMonthlyReportDue(local: ZonedParts, dueWeekday: number, dueHour: number): boolean {
+/** @deprecated Use localDateKey — kept for weekly Monday schedule keys. */
+export function mondayScheduleKey(local: ZonedParts): string {
+  return localDateKey(local);
+}
+
+/** Monthly: due on calendar day-of-month at dueHour (e.g. 1st at 09:00). */
+export function isMonthlyReportDue(local: ZonedParts, dueDay: number, dueHour: number): boolean {
+  return local.day === dueDay && local.hour === dueHour;
+}
+
+/** Weekly: due on weekday at dueHour (e.g. Monday=1 at 09:00). */
+export function isWeeklyReportDue(local: ZonedParts, dueWeekday: number, dueHour: number): boolean {
   return local.weekday === dueWeekday && local.hour === dueHour;
 }
 
@@ -46,13 +57,18 @@ export function reportPeriodKey(now = new Date()): string {
 }
 
 export function shouldSkipAlreadySent(options: {
-  mondayKey: string;
-  periodKey: string;
-  lastMondayKey?: string;
+  scheduleKey: string;
+  periodKey?: string;
+  lastScheduleKey?: string;
   lastPeriodKey?: string;
+  /** @deprecated alias for scheduleKey */
+  mondayKey?: string;
+  lastMondayKey?: string;
   oncePerPeriod?: boolean;
 }): boolean {
-  if (options.lastMondayKey === options.mondayKey) return true;
-  if (options.oncePerPeriod && options.lastPeriodKey === options.periodKey) return true;
+  const scheduleKey = options.scheduleKey || options.mondayKey || '';
+  const lastScheduleKey = options.lastScheduleKey || options.lastMondayKey;
+  if (lastScheduleKey && scheduleKey && lastScheduleKey === scheduleKey) return true;
+  if (options.oncePerPeriod && options.periodKey && options.lastPeriodKey === options.periodKey) return true;
   return false;
 }

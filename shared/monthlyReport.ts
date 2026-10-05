@@ -132,6 +132,88 @@ export function monthWindowFromYm(yearMonth: string): { startDate: string; endDa
   };
 }
 
+/**
+ * Previous Mon–Sun week in `timeZone`, relative to `now`.
+ * Example: on Monday 5 Oct 2026 IST → 2026-09-28 → 2026-10-04.
+ */
+export function previousWeekWindow(
+  now = new Date(),
+  timeZone = 'Asia/Kolkata',
+): { startDate: string; endDate: string; periodLabel: string } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const read = (type: string) => parts.find((part) => part.type === type)?.value || '';
+  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const weekday = weekdayMap[read('weekday')] ?? 1;
+  const year = Number(read('year'));
+  const month = Number(read('month'));
+  const day = Number(read('day'));
+  const noon = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const daysSinceMonday = (weekday + 6) % 7;
+  const thisMonday = new Date(noon);
+  thisMonday.setUTCDate(thisMonday.getUTCDate() - daysSinceMonday);
+  const prevMonday = new Date(thisMonday);
+  prevMonday.setUTCDate(prevMonday.getUTCDate() - 7);
+  const prevSunday = new Date(thisMonday);
+  prevSunday.setUTCDate(prevSunday.getUTCDate() - 1);
+
+  const startDate = prevMonday.toISOString().slice(0, 10);
+  const endDate = prevSunday.toISOString().slice(0, 10);
+  const startLabel = prevMonday.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const endLabel = prevSunday.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  return {
+    startDate,
+    endDate,
+    periodLabel: `${startLabel} – ${endLabel}`,
+  };
+}
+
+export type ReportKind = 'monthly' | 'weekly';
+
+export function periodReportSubject(report: MonthlyReport, kind: ReportKind = 'monthly'): string {
+  const project = report.projectKey ? ` · ${report.projectKey}` : '';
+  const title = kind === 'weekly' ? 'SRE Audit Weekly Jira Report' : 'SRE Audit Monthly Jira Report';
+  return `${title} — ${report.periodLabel}${project}`;
+}
+
+export function monthlyReportSubject(report: MonthlyReport): string {
+  return periodReportSubject(report, 'monthly');
+}
+
+export function weeklyReportSubject(report: MonthlyReport): string {
+  return periodReportSubject(report, 'weekly');
+}
+
+export function monthlyReportIntro(report: MonthlyReport): string {
+  const net = report.totals.netChange;
+  const netText = net === 0
+    ? 'opened and closed were balanced'
+    : net > 0
+      ? `backlog +${net}`
+      : `backlog −${Math.abs(net)}`;
+
+  const team = report.teamSlaOverall.avgDays == null
+    ? `${SRE_AUDIT_TEAM_SLA_LABEL} n/a`
+    : `${SRE_AUDIT_TEAM_SLA_LABEL} ${report.teamSlaOverall.avgDays}d`;
+  const reviewer = report.reviewerSlaOverall.avgDays == null
+    ? `${COMPLIANCE_SLA_LABEL} n/a`
+    : `${COMPLIANCE_SLA_LABEL} ${report.reviewerSlaOverall.avgDays}d`;
+  const breaches = report.topBreaches.length
+    ? `${report.topBreaches.length} outside SLA`
+    : 'no open SLA breaches';
+
+  return [
+    `${report.periodLabel}: opened ${report.totals.opened}, closed ${report.totals.closed} (${netText}).`,
+    `${team} · ${reviewer} · ${breaches}.`,
+  ].join(' ');
+}
+
 export function buildMonthlyReport(
   issues: AnalyticsIssue[],
   options: {
@@ -300,33 +382,4 @@ export function buildMonthlyReport(
       .sort((a, b) => (b.opened + b.closed) - (a.opened + a.closed))
       .slice(0, 10),
   };
-}
-
-export function monthlyReportSubject(report: MonthlyReport): string {
-  const project = report.projectKey ? ` · ${report.projectKey}` : '';
-  return `SRE Audit Monthly Jira Report — ${report.periodLabel}${project}`;
-}
-
-export function monthlyReportIntro(report: MonthlyReport): string {
-  const net = report.totals.netChange;
-  const netText = net === 0
-    ? 'opened and closed were balanced'
-    : net > 0
-      ? `backlog +${net}`
-      : `backlog −${Math.abs(net)}`;
-
-  const team = report.teamSlaOverall.avgDays == null
-    ? `${SRE_AUDIT_TEAM_SLA_LABEL} n/a`
-    : `${SRE_AUDIT_TEAM_SLA_LABEL} ${report.teamSlaOverall.avgDays}d`;
-  const reviewer = report.reviewerSlaOverall.avgDays == null
-    ? `${COMPLIANCE_SLA_LABEL} n/a`
-    : `${COMPLIANCE_SLA_LABEL} ${report.reviewerSlaOverall.avgDays}d`;
-  const breaches = report.topBreaches.length
-    ? `${report.topBreaches.length} outside SLA`
-    : 'no open SLA breaches';
-
-  return [
-    `${report.periodLabel}: opened ${report.totals.opened}, closed ${report.totals.closed} (${netText}).`,
-    `${team} · ${reviewer} · ${breaches}.`,
-  ].join(' ');
 }

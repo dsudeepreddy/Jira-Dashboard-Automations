@@ -1,9 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.renderMonthlyReportEmail = renderMonthlyReportEmail;
-const slaLabels_1 = require("../shared/slaLabels");
 const monthlyReport_1 = require("../shared/monthlyReport");
 const dashboardContract_1 = require("../shared/dashboardContract");
+const slaLabels_1 = require("../shared/slaLabels");
 const COLORS = {
     opened: '#0891b2',
     closed: '#7c3aed',
@@ -127,9 +127,11 @@ function breachList(report, dashboardUrl) {
       ${rows}
     </table>`;
 }
-function renderMonthlyReportEmail(report, dashboardUrl) {
-    const subject = (0, monthlyReport_1.monthlyReportSubject)(report);
+function renderMonthlyReportEmail(report, dashboardUrl, kind = 'monthly') {
+    const subject = (0, monthlyReport_1.periodReportSubject)(report, kind);
     const intro = (0, monthlyReport_1.monthlyReportIntro)(report);
+    const headerLabel = kind === 'weekly' ? 'SRE Audit · Weekly Jira Report' : 'SRE Audit · Monthly Jira Report';
+    const scopeNoun = kind === 'weekly' ? 'week' : 'month';
     const auditBars = dualSeriesChart(report.byAuditType.slice(0, 8).map((row) => ({
         label: row.auditType,
         primary: row.opened,
@@ -139,7 +141,7 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
         secondaryLabel: 'Closed',
         primaryColor: COLORS.opened,
         secondaryColor: COLORS.closed,
-        emptyLabel: 'No audit-type activity in this month.',
+        emptyLabel: `No audit-type activity in this ${scopeNoun}.`,
     });
     const appBars = dualSeriesChart(report.topApplications.slice(0, 8).map((row) => ({
         label: row.name,
@@ -150,7 +152,7 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
         secondaryLabel: 'Closed',
         primaryColor: COLORS.opened,
         secondaryColor: COLORS.closed,
-        emptyLabel: 'No application activity tagged this month.',
+        emptyLabel: `No application activity tagged this ${scopeNoun}.`,
     });
     const slaBars = dualSeriesChart(report.byAuditType.slice(0, 8).map((row) => ({
         label: row.auditType,
@@ -161,7 +163,7 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
         secondaryLabel: slaLabels_1.COMPLIANCE_SLA_LABEL,
         primaryColor: COLORS.team,
         secondaryColor: COLORS.reviewer,
-        emptyLabel: 'No completed SLA handoffs this month.',
+        emptyLabel: `No completed SLA handoffs this ${scopeNoun}.`,
         valueSuffix: 'd',
     });
     const openDashboardBtn = dashboardUrl
@@ -179,7 +181,7 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                   <tr>
                     <td style="vertical-align:middle;">
-                      <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;opacity:0.9;">SRE Audit · Monthly Jira Report</div>
+                      <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;opacity:0.9;">${escapeHtml(headerLabel)}</div>
                       <div style="margin-top:8px;font-size:26px;font-weight:700;">${escapeHtml(report.periodLabel)}</div>
                       <div style="margin-top:6px;font-size:13px;opacity:0.9;">${escapeHtml(report.startDate)} → ${escapeHtml(report.endDate)}${report.projectKey ? ` · ${escapeHtml(report.projectKey)}` : ''}</div>
                     </td>
@@ -227,7 +229,7 @@ function renderMonthlyReportEmail(report, dashboardUrl) {
             <tr><td style="padding:8px 20px 16px;">${breachList(report, dashboardUrl)}</td></tr>
             <tr>
               <td style="padding:0 28px 28px;font-size:12px;color:#64748b;">
-                Full month detail is attached as Excel (same layout as the dashboard export, scoped to this month).
+                Full ${scopeNoun} detail is attached as Excel (same layout as the dashboard export, scoped to this ${scopeNoun}).
               </td>
             </tr>
           </table>

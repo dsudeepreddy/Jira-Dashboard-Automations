@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   isMonthlyReportDue,
+  isWeeklyReportDue,
+  localDateKey,
   mondayScheduleKey,
   reportPeriodKey,
   shouldSkipAlreadySent as shouldSkipAlreadySentShared,
@@ -11,6 +13,8 @@ import {
 
 export {
   isMonthlyReportDue,
+  isWeeklyReportDue,
+  localDateKey,
   mondayScheduleKey,
   reportPeriodKey,
   zonedParts,
@@ -19,8 +23,11 @@ export type { ZonedParts };
 
 type PersistedScheduleState = {
   lastMondayKey?: string;
+  lastMonthlyKey?: string;
+  lastWeeklyKey?: string;
   lastPeriodKey?: string;
   lastSentAt?: string;
+  lastWeeklySentAt?: string;
 };
 
 function defaultStatePath(): string {
@@ -41,19 +48,24 @@ export function readScheduleState(filePath = defaultStatePath()): PersistedSched
 export function writeScheduleState(state: PersistedScheduleState, filePath = defaultStatePath()): void {
   const dir = path.dirname(filePath);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  const previous = readScheduleState(filePath);
+  fs.writeFileSync(filePath, `${JSON.stringify({ ...previous, ...state }, null, 2)}\n`, 'utf8');
 }
 
 export function shouldSkipAlreadySent(options: {
-  mondayKey: string;
-  periodKey: string;
+  scheduleKey: string;
+  periodKey?: string;
   state: PersistedScheduleState;
   oncePerPeriod?: boolean;
+  kind?: 'monthly' | 'weekly';
 }): boolean {
+  const lastScheduleKey = options.kind === 'weekly'
+    ? options.state.lastWeeklyKey
+    : (options.state.lastMonthlyKey || options.state.lastMondayKey);
   return shouldSkipAlreadySentShared({
-    mondayKey: options.mondayKey,
+    scheduleKey: options.scheduleKey,
     periodKey: options.periodKey,
-    lastMondayKey: options.state.lastMondayKey,
+    lastScheduleKey,
     lastPeriodKey: options.state.lastPeriodKey,
     oncePerPeriod: options.oncePerPeriod,
   });

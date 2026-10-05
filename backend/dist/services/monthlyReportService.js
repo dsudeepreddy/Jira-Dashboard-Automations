@@ -2,8 +2,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.loadIssuesForMonthlyReport = loadIssuesForMonthlyReport;
 exports.generateMonthlyReport = generateMonthlyReport;
+exports.generateWeeklyReport = generateWeeklyReport;
 exports.sendSmtpTestEmail = sendSmtpTestEmail;
 exports.sendMonthlyReport = sendMonthlyReport;
+exports.sendWeeklyReport = sendWeeklyReport;
 const env_1 = require("../config/env");
 const database_1 = require("../db/database");
 const jiraRepository_1 = require("../db/jiraRepository");
@@ -19,15 +21,22 @@ function parseRecipients(value) {
         .map((entry) => entry.trim())
         .filter(Boolean);
 }
+function reportRecipients(kind, overrideTo) {
+    if (overrideTo)
+        return parseRecipients(overrideTo);
+    if (kind === 'weekly') {
+        return parseRecipients(env_1.env.WEEKLY_REPORT_TO || env_1.env.MONTHLY_REPORT_TO);
+    }
+    return parseRecipients(env_1.env.MONTHLY_REPORT_TO);
+}
 async function loadIssuesForMonthlyReport(options) {
     const { projectKey, startDate, endDate } = options;
     if ((0, database_1.isDatabaseEnabled)()) {
-        // Snapshot may be larger than one month; filter in memory via buildMonthlyReport.
-        console.log(JSON.stringify({ event: 'monthly_report_load_db', projectKey: projectKey || null }));
+        console.log(JSON.stringify({ event: 'period_report_load_db', projectKey: projectKey || null }));
         return (0, jiraRepository_1.getStoredSnapshot)({ projectKey });
     }
     console.log(JSON.stringify({
-        event: 'monthly_report_load_jira',
+        event: 'period_report_load_jira',
         projectKey: projectKey || null,
         startDate,
         endDate,
@@ -40,13 +49,29 @@ async function loadIssuesForMonthlyReport(options) {
         orderBy: 'updated DESC',
     });
     console.log(JSON.stringify({
-        event: 'monthly_report_load_jira_done',
+        event: 'period_report_load_jira_done',
         issueCount: result.issues.length,
     }));
     return result.issues;
 }
 async function generateMonthlyReport(options = {}) {
     const window = options.month ? (0, monthlyReport_1.monthWindowFromYm)(options.month) : (0, monthlyReport_1.previousMonthWindow)();
+    const projectKey = options.projectKey || env_1.env.MONTHLY_REPORT_PROJECT_KEY || env_1.env.JIRA_PROJECT_KEY || undefined;
+    const issues = await loadIssuesForMonthlyReport({
+        projectKey,
+        startDate: window.startDate,
+        endDate: window.endDate,
+    });
+    if ((0, database_1.isDatabaseEnabled)())
+        await (0, jiraRepository_1.getStoredStatuses)().catch(() => []);
+    const report = (0, monthlyReport_1.buildMonthlyReport)(issues, {
+        ...window,
+        projectKey,
+    });
+    return { report, issues };
+}
+async function generateWeeklyReport(options = {}) {
+    const window = (0, monthlyReport_1.previousWeekWindow)(options.now || new Date(), env_1.env.MONTHLY_REPORT_TIMEZONE);
     const projectKey = options.projectKey || env_1.env.MONTHLY_REPORT_PROJECT_KEY || env_1.env.JIRA_PROJECT_KEY || undefined;
     const issues = await loadIssuesForMonthlyReport({
         projectKey,
@@ -99,37 +124,40 @@ async function sendSmtpTestEmail(options = {}) {
         email: (0, emailClient_1.emailDiagnostics)(),
     };
 }
-async function sendMonthlyReport(options = {}) {
+async function sendPeriodReport(options) {
+    const kind = options.kind;
     const started = Date.now();
     console.log(JSON.stringify({
-        event: 'monthly_report_build_start',
+        event: `${kind}_report_build_start`,
         dryRun: Boolean(options.dryRun),
         month: options.month || null,
         projectKey: options.projectKey || env_1.env.MONTHLY_REPORT_PROJECT_KEY || env_1.env.JIRA_PROJECT_KEY || null,
     }));
-    const { report, issues } = await generateMonthlyReport({
-        month: options.month,
-        projectKey: options.projectKey,
-    });
+    const { report, issues } = kind === 'weekly'
+        ? await generateWeeklyReport({ projectKey: options.projectKey })
+        : await generateMonthlyReport({ month: options.month, projectKey: options.projectKey });
     console.log(JSON.stringify({
-        event: 'monthly_report_build_done',
+        event: `${kind}_report_build_done`,
         durationMs: Date.now() - started,
         opened: report.totals.opened,
         closed: report.totals.closed,
         periodLabel: report.periodLabel,
+        startDate: report.startDate,
+        endDate: report.endDate,
     }));
-    const rendered = (0, monthlyReportEmail_1.renderMonthlyReportEmail)(report, (0, dashboardPublicUrl_1.resolveMonthlyReportDashboardUrl)());
-    const workbook = (0, monthlyReportWorkbook_1.buildMonthlyReportWorkbookBuffer)(report, issues);
+    const rendered = (0, monthlyReportEmail_1.renderMonthlyReportEmail)(report, (0, dashboardPublicUrl_1.resolveMonthlyReportDashboardUrl)(), kind);
+    const workbook = (0, monthlyReportWorkbook_1.buildMonthlyReportWorkbookBuffer)(report, issues, kind);
     const attachment = {
         filename: workbook.filename,
         content: workbook.content,
         contentType: workbook.contentType,
         bytes: workbook.content.length,
     };
-    const recipients = parseRecipients(options.to || env_1.env.MONTHLY_REPORT_TO);
+    const recipients = reportRecipients(kind, options.to);
     if (options.dryRun) {
         return {
             dryRun: true,
+            kind,
             email: (0, emailClient_1.emailDiagnostics)(),
             recipients,
             subject: rendered.subject,
@@ -140,13 +168,13 @@ async function sendMonthlyReport(options = {}) {
         };
     }
     if (!(0, emailClient_1.isEmailConfigured)()) {
-        throw Object.assign(new Error('Monthly report email is not configured. Set SMTP_HOST, SMTP_FROM, and MONTHLY_REPORT_TO.'), {
+        throw Object.assign(new Error('Report email is not configured. Set SMTP_HOST, SMTP_FROM, and MONTHLY_REPORT_TO.'), {
             statusCode: 503,
             code: 'EMAIL_NOT_CONFIGURED',
         });
     }
     if (!recipients.length) {
-        throw Object.assign(new Error('No monthly report recipients configured.'), {
+        throw Object.assign(new Error('No report recipients configured.'), {
             statusCode: 400,
             code: 'NO_RECIPIENTS',
         });
@@ -164,6 +192,7 @@ async function sendMonthlyReport(options = {}) {
     });
     return {
         dryRun: false,
+        kind,
         email: (0, emailClient_1.emailDiagnostics)(),
         recipients,
         subject: rendered.subject,
@@ -175,4 +204,10 @@ async function sendMonthlyReport(options = {}) {
             bytes: attachment.bytes,
         },
     };
+}
+async function sendMonthlyReport(options = {}) {
+    return sendPeriodReport({ ...options, kind: 'monthly' });
+}
+async function sendWeeklyReport(options = {}) {
+    return sendPeriodReport({ ...options, kind: 'weekly' });
 }

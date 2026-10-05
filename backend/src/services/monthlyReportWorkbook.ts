@@ -129,6 +129,7 @@ function appendSection(sheet: XLSX.WorkSheet, startRow: number, title: string, r
 export function buildMonthlyReportWorkbookBuffer(
   report: MonthlyReport,
   issues: AnalyticsIssue[],
+  kind: 'monthly' | 'weekly' = 'monthly',
 ): { filename: string; content: Buffer; contentType: string } {
   const monthIssues = filterIssuesForReportMonth(issues, report);
   const metrics = aggregateDashboardMetrics(monthIssues, [], {
@@ -145,7 +146,9 @@ export function buildMonthlyReportWorkbookBuffer(
 
   const wb = XLSX.utils.book_new();
   const usedNames = new Set<string>();
-  const ym = report.startDate.slice(0, 7);
+  const ym = kind === 'weekly'
+    ? `${report.startDate}_to_${report.endDate}`
+    : report.startDate.slice(0, 7);
 
   const summaryRows: Array<Array<string | number>> = [
     ['SRE Audit monthly export'],
@@ -280,7 +283,7 @@ export function buildMonthlyReportWorkbookBuffer(
 
   const content = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
   return {
-    filename: `sre-audit-monthly-${ym}.xlsx`,
+    filename: `sre-audit-${kind}-${ym}.xlsx`,
     content,
     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   };

@@ -198,6 +198,7 @@ See [`.env.example`](.env.example) for the full list and placeholder format. Imp
 | `WEEKLY_REPORT_ENABLED` | Enables weekly auto-send (previous Mon–Sun) |
 | `WEEKLY_REPORT_WEEKDAY` / `WEEKLY_REPORT_HOUR` | Weekly schedule (defaults: Monday 09:00, same timezone) |
 | `WEEKLY_REPORT_TO` | Optional weekly recipients (falls back to `MONTHLY_REPORT_TO`) |
+| `MONTHLY_REPORT_STATE_FILE` | Durable JSON file for “already sent” claims (required for anti-spam across the due hour / restarts) |
 | `MONTHLY_REPORT_DASHBOARD_URL` | Optional “Open Dashboard” link in the email |
 | `DASHBOARD_PUBLIC_HOSTNAME` | Preferred hostname when the dashboard URL would otherwise show an IP |
 | `NEXT_PUBLIC_GITLAB_URL` / `NEXT_PUBLIC_GITHUB_URL` / `NEXT_PUBLIC_DOCS_URL` | Docs icon in the dashboard header (also accepts `GITLAB_URL` / `GITHUB_URL`) |

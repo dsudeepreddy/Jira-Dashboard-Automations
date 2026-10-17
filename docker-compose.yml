@@ -47,6 +47,8 @@ services:
       https_proxy: ""
       NO_PROXY: "*"
       no_proxy: "*"
+      # Persist weekly/monthly "already sent" claims across ticks and restarts
+      MONTHLY_REPORT_STATE_FILE: /app/data/monthly-report-schedule.json
     extra_hosts:
       - "tinyproxy:host-gateway"
       - "host.containers.internal:host-gateway"

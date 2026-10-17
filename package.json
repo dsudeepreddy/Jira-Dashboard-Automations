@@ -9,8 +9,9 @@
     "sync:shared": "node backend/scripts/sync-shared.cjs",
     "lint": "next lint",
     "test:unit": "npx tsc shared/*.ts --rootDir shared --outDir tests/.tmp --module commonjs --target ES2022 --esModuleInterop --skipLibCheck && node --test tests/analytics.test.mjs tests/comments.test.mjs tests/monthlyReport.test.mjs tests/monthlyReportSchedule.test.mjs",
+    "test:schedule": "npm run sync:shared && npm --prefix backend run build && node --test tests/reportSchedulePersistence.test.mjs",
     "test:api": "node --test tests/api.test.mjs",
-    "test": "npm run test:unit"
+    "test": "npm run test:unit && npm run test:schedule"
   },
   "dependencies": {
     "axios": "^1.7.3",

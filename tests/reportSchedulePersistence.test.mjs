@@ -198,3 +198,33 @@ test('failed weekly send can retry once, then success blocks further sends', asy
     fs.rmSync(`${file}.weekly.2026-10-12.lock`, { force: true });
   }
 });
+
+test('probeScheduleStateWritable accepts a writable directory', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jira-sched-probe-'));
+  const file = path.join(dir, 'monthly-report-schedule.json');
+  try {
+    assert.equal(schedule.probeScheduleStateWritable(file), null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ensureScheduleStatePath falls back when preferred path is not writable', () => {
+  const previous = process.env.MONTHLY_REPORT_STATE_FILE;
+  // /proc is never creatable as a nested dir for this purpose on Linux/macOS sandboxes.
+  const blocked = path.join('/proc', `no-write-${Date.now()}`, 'monthly-report-schedule.json');
+  process.env.MONTHLY_REPORT_STATE_FILE = blocked;
+  schedule.resetScheduleStatePathCache();
+  try {
+    const info = schedule.ensureScheduleStatePath();
+    assert.equal(info.preferredPath, blocked);
+    assert.equal(info.fallbackUsed, true);
+    assert.ok(!info.error, info.error || 'expected writable fallback');
+    assert.notEqual(info.path, blocked);
+    assert.equal(schedule.probeScheduleStateWritable(info.path), null);
+  } finally {
+    if (previous === undefined) delete process.env.MONTHLY_REPORT_STATE_FILE;
+    else process.env.MONTHLY_REPORT_STATE_FILE = previous;
+    schedule.resetScheduleStatePathCache();
+  }
+});

@@ -44,14 +44,19 @@ const syncLimiter = (0, express_rate_limit_1.rateLimit)({
 });
 app.get('/api/v1/health', async (req, res) => {
     const database = await (0, database_1.checkDatabase)();
-    const scheduleState = (0, monthlyReportSchedule_1.readScheduleState)();
+    const statePathInfo = (0, monthlyReportSchedule_1.getScheduleStatePathInfo)();
+    const scheduleState = (0, monthlyReportSchedule_1.readScheduleState)(statePathInfo.path);
     const payload = {
         status: 'ok',
         service: 'backend-api',
         timestamp: new Date().toISOString(),
         jira: jiraClient_1.jiraDiagnostics,
         email: (0, emailClient_1.emailDiagnostics)(),
-        reportScheduleStateFile: (0, monthlyReportSchedule_1.getScheduleStatePath)(),
+        reportScheduleStateFile: statePathInfo.path,
+        reportScheduleStateFileSource: statePathInfo.source,
+        reportScheduleStateFileFallbackUsed: statePathInfo.fallbackUsed,
+        reportScheduleStateFileWritable: !statePathInfo.error,
+        reportScheduleStateFileError: statePathInfo.error || null,
         monthlyReportSchedule: {
             enabled: env_1.env.MONTHLY_REPORT_ENABLED,
             day: env_1.env.MONTHLY_REPORT_DAY,
@@ -123,7 +128,32 @@ async function startScheduledSync() {
     setInterval(() => { void tick(false); }, env_1.env.SYNC_INTERVAL_MS);
 }
 async function startMonthlyReportScheduler() {
-    const stateFile = (0, monthlyReportSchedule_1.getScheduleStatePath)();
+    const statePathInfo = (0, monthlyReportSchedule_1.ensureScheduleStatePath)();
+    const stateFile = statePathInfo.path;
+    if (statePathInfo.error) {
+        console.error(JSON.stringify({
+            event: 'report_schedule_state_unwritable',
+            preferredPath: statePathInfo.preferredPath,
+            error: statePathInfo.error,
+            detail: 'Auto weekly/monthly send cannot claim slots without a writable state file. Set MONTHLY_REPORT_STATE_FILE to a path the backend user can create (e.g. /var/lib/jira-dashboard/monthly-report-schedule.json) or chown/chmod the data directory.',
+        }));
+    }
+    else if (statePathInfo.fallbackUsed) {
+        console.warn(JSON.stringify({
+            event: 'report_schedule_state_fallback',
+            preferredPath: statePathInfo.preferredPath,
+            stateFile,
+            source: statePathInfo.source,
+            detail: 'Preferred state path was not writable; using fallback. Set MONTHLY_REPORT_STATE_FILE explicitly to avoid tmp/home surprises after restart.',
+        }));
+    }
+    else {
+        console.log(JSON.stringify({
+            event: 'report_schedule_state_ready',
+            stateFile,
+            source: statePathInfo.source,
+        }));
+    }
     if (!env_1.env.MONTHLY_REPORT_ENABLED) {
         console.log(JSON.stringify({
             event: 'monthly_report_scheduler_disabled',
@@ -138,6 +168,7 @@ async function startMonthlyReportScheduler() {
             hour: env_1.env.MONTHLY_REPORT_HOUR,
             emailConfigured: (0, emailClient_1.isEmailConfigured)(),
             stateFile,
+            stateFileWritable: !statePathInfo.error,
             nextAutoSend: `Every month on day=${env_1.env.MONTHLY_REPORT_DAY} at ${String(env_1.env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env_1.env.MONTHLY_REPORT_TIMEZONE}`,
         }));
     }
@@ -155,11 +186,21 @@ async function startMonthlyReportScheduler() {
             hour: env_1.env.WEEKLY_REPORT_HOUR,
             emailConfigured: (0, emailClient_1.isEmailConfigured)(),
             stateFile,
+            stateFileWritable: !statePathInfo.error,
             nextAutoSend: `Every weekday=${env_1.env.WEEKLY_REPORT_WEEKDAY} (1=Mon) at ${String(env_1.env.WEEKLY_REPORT_HOUR).padStart(2, '0')}:00 ${env_1.env.MONTHLY_REPORT_TIMEZONE}`,
         }));
     }
     if (!env_1.env.MONTHLY_REPORT_ENABLED && !env_1.env.WEEKLY_REPORT_ENABLED)
         return;
+    if (statePathInfo.error) {
+        console.error(JSON.stringify({
+            event: 'report_scheduler_not_started',
+            reason: 'state_file_unwritable',
+            error: statePathInfo.error,
+            detail: 'Refusing to run auto-send without durable claims (would risk email spam or silent failures). Fix permissions and restart.',
+        }));
+        return;
+    }
     const scheduler = (0, reportScheduler_1.createReportScheduler)({
         timezone: env_1.env.MONTHLY_REPORT_TIMEZONE,
         monthlyEnabled: env_1.env.MONTHLY_REPORT_ENABLED,

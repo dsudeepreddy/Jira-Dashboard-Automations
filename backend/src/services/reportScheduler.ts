@@ -198,6 +198,13 @@ export function createReportScheduler(deps: ReportSchedulerDeps) {
           }
         }
       }
+    } catch (err) {
+      error({
+        event: 'report_scheduler_tick_failed',
+        error: err instanceof Error ? err.message : 'unknown',
+        stateFile,
+        detail: 'Unexpected scheduler failure (often state-file permissions). Fix MONTHLY_REPORT_STATE_FILE writability and restart.',
+      });
     } finally {
       tickRunning = false;
     }

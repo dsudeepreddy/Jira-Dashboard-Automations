@@ -12,7 +12,8 @@ import { runJiraSync, syncJiraHandler, jiraWebhookHandler } from './controllers/
 import { sendMonthlyReportHandler, sendWeeklyReportHandler } from './controllers/reportController';
 import { sendMonthlyReport, sendWeeklyReport } from './services/monthlyReportService';
 import {
-  getScheduleStatePath,
+  ensureScheduleStatePath,
+  getScheduleStatePathInfo,
   readScheduleState,
 } from './services/monthlyReportSchedule';
 import { createReportScheduler } from './services/reportScheduler';
@@ -47,14 +48,19 @@ const syncLimiter = rateLimit({
 
 app.get('/api/v1/health', async (req, res) => {
   const database = await checkDatabase();
-  const scheduleState = readScheduleState();
+  const statePathInfo = getScheduleStatePathInfo();
+  const scheduleState = readScheduleState(statePathInfo.path);
   const payload: Record<string, unknown> = {
     status: 'ok',
     service: 'backend-api',
     timestamp: new Date().toISOString(),
     jira: jiraDiagnostics,
     email: emailDiagnostics(),
-    reportScheduleStateFile: getScheduleStatePath(),
+    reportScheduleStateFile: statePathInfo.path,
+    reportScheduleStateFileSource: statePathInfo.source,
+    reportScheduleStateFileFallbackUsed: statePathInfo.fallbackUsed,
+    reportScheduleStateFileWritable: !statePathInfo.error,
+    reportScheduleStateFileError: statePathInfo.error || null,
     monthlyReportSchedule: {
       enabled: env.MONTHLY_REPORT_ENABLED,
       day: env.MONTHLY_REPORT_DAY,
@@ -127,7 +133,31 @@ async function startScheduledSync() {
 }
 
 async function startMonthlyReportScheduler() {
-  const stateFile = getScheduleStatePath();
+  const statePathInfo = ensureScheduleStatePath();
+  const stateFile = statePathInfo.path;
+
+  if (statePathInfo.error) {
+    console.error(JSON.stringify({
+      event: 'report_schedule_state_unwritable',
+      preferredPath: statePathInfo.preferredPath,
+      error: statePathInfo.error,
+      detail: 'Auto weekly/monthly send cannot claim slots without a writable state file. Set MONTHLY_REPORT_STATE_FILE to a path the backend user can create (e.g. /var/lib/jira-dashboard/monthly-report-schedule.json) or chown/chmod the data directory.',
+    }));
+  } else if (statePathInfo.fallbackUsed) {
+    console.warn(JSON.stringify({
+      event: 'report_schedule_state_fallback',
+      preferredPath: statePathInfo.preferredPath,
+      stateFile,
+      source: statePathInfo.source,
+      detail: 'Preferred state path was not writable; using fallback. Set MONTHLY_REPORT_STATE_FILE explicitly to avoid tmp/home surprises after restart.',
+    }));
+  } else {
+    console.log(JSON.stringify({
+      event: 'report_schedule_state_ready',
+      stateFile,
+      source: statePathInfo.source,
+    }));
+  }
 
   if (!env.MONTHLY_REPORT_ENABLED) {
     console.log(JSON.stringify({
@@ -142,6 +172,7 @@ async function startMonthlyReportScheduler() {
       hour: env.MONTHLY_REPORT_HOUR,
       emailConfigured: isEmailConfigured(),
       stateFile,
+      stateFileWritable: !statePathInfo.error,
       nextAutoSend: `Every month on day=${env.MONTHLY_REPORT_DAY} at ${String(env.MONTHLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
     }));
   }
@@ -159,11 +190,22 @@ async function startMonthlyReportScheduler() {
       hour: env.WEEKLY_REPORT_HOUR,
       emailConfigured: isEmailConfigured(),
       stateFile,
+      stateFileWritable: !statePathInfo.error,
       nextAutoSend: `Every weekday=${env.WEEKLY_REPORT_WEEKDAY} (1=Mon) at ${String(env.WEEKLY_REPORT_HOUR).padStart(2, '0')}:00 ${env.MONTHLY_REPORT_TIMEZONE}`,
     }));
   }
 
   if (!env.MONTHLY_REPORT_ENABLED && !env.WEEKLY_REPORT_ENABLED) return;
+
+  if (statePathInfo.error) {
+    console.error(JSON.stringify({
+      event: 'report_scheduler_not_started',
+      reason: 'state_file_unwritable',
+      error: statePathInfo.error,
+      detail: 'Refusing to run auto-send without durable claims (would risk email spam or silent failures). Fix permissions and restart.',
+    }));
+    return;
+  }
 
   const scheduler = createReportScheduler({
     timezone: env.MONTHLY_REPORT_TIMEZONE,

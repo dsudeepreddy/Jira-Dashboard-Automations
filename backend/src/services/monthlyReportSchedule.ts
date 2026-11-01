@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   isMonthlyReportDue,
@@ -36,25 +37,30 @@ export type PersistedScheduleState = {
 /** How long a crash-left claim blocks retries (ms). Long enough to cover the due hour. */
 export const CLAIM_TTL_MS = 55 * 60 * 1000;
 
+export type ScheduleStatePathInfo = {
+  path: string;
+  source: 'env' | 'app-data' | 'repo-data' | 'home' | 'tmpdir';
+  fallbackUsed: boolean;
+  preferredPath: string;
+  error?: string;
+};
+
+let cachedStatePathInfo: ScheduleStatePathInfo | null = null;
+
 /** Repo root from compiled `dist/services` (or `src/services` under ts-node). */
 function repoRoot(): string {
   return path.resolve(__dirname, '../../..');
 }
 
-/**
- * Resolve schedule state path.
- * Relative MONTHLY_REPORT_STATE_FILE values are anchored to the repo root so
- * cwd (systemd WorkingDirectory, pm2, `node dist/server.js` from backend/) cannot
- * silently change the file and lose anti-spam claims.
- */
-function defaultStatePath(): string {
+function resolveConfiguredPath(configured: string): string {
+  return path.isAbsolute(configured)
+    ? configured
+    : path.resolve(repoRoot(), configured);
+}
+
+function preferredStatePath(): string {
   const configured = process.env.MONTHLY_REPORT_STATE_FILE?.trim();
-  if (configured) {
-    return path.isAbsolute(configured)
-      ? configured
-      : path.resolve(repoRoot(), configured);
-  }
-  // Optional container mount — only if that directory already exists.
+  if (configured) return resolveConfiguredPath(configured);
   try {
     if (fs.existsSync('/app/data')) {
       return '/app/data/monthly-report-schedule.json';
@@ -65,8 +71,128 @@ function defaultStatePath(): string {
   return path.join(repoRoot(), 'data', 'monthly-report-schedule.json');
 }
 
+function candidateStatePaths(): Array<{ path: string; source: ScheduleStatePathInfo['source'] }> {
+  const preferred = preferredStatePath();
+  const configured = process.env.MONTHLY_REPORT_STATE_FILE?.trim();
+  const out: Array<{ path: string; source: ScheduleStatePathInfo['source'] }> = [];
+  const push = (filePath: string, source: ScheduleStatePathInfo['source']) => {
+    if (!out.some((item) => item.path === filePath)) {
+      out.push({ path: filePath, source });
+    }
+  };
+
+  if (configured) {
+    push(resolveConfiguredPath(configured), 'env');
+  } else if (preferred.startsWith('/app/data')) {
+    push(preferred, 'app-data');
+  } else {
+    push(preferred, 'repo-data');
+  }
+
+  // Service-user home — writable even when the install tree is root-owned / read-only.
+  try {
+    const home = os.homedir();
+    if (home) {
+      push(
+        path.join(home, '.local', 'share', 'jira-dashboard', 'monthly-report-schedule.json'),
+        'home',
+      );
+    }
+  } catch {
+    // ignore
+  }
+
+  push(
+    path.join(os.tmpdir(), 'jira-dashboard', 'monthly-report-schedule.json'),
+    'tmpdir',
+  );
+  return out;
+}
+
+/**
+ * Probe create/write/rename in the target directory.
+ * Returns an error message when the process cannot persist schedule claims there.
+ */
+export function probeScheduleStateWritable(filePath: string): string | null {
+  const dir = path.dirname(filePath);
+  const probe = path.join(
+    dir,
+    `.schedule-write-probe.${process.pid}.${Date.now()}.tmp`,
+  );
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(probe, 'ok\n', { flag: 'w' });
+    fs.renameSync(probe, `${probe}.renamed`);
+    fs.unlinkSync(`${probe}.renamed`);
+    return null;
+  } catch (error) {
+    try {
+      fs.unlinkSync(probe);
+    } catch {
+      // ignore
+    }
+    try {
+      fs.unlinkSync(`${probe}.renamed`);
+    } catch {
+      // ignore
+    }
+    const code = error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: string }).code)
+      : '';
+    const message = error instanceof Error ? error.message : String(error);
+    return code ? `${code}: ${message}` : message;
+  }
+}
+
+/**
+ * Pick a writable schedule state path (env → repo/app data → $HOME → tmp).
+ * Cached for process lifetime. Call resetScheduleStatePathCache() in tests.
+ */
+export function ensureScheduleStatePath(): ScheduleStatePathInfo {
+  if (cachedStatePathInfo) return cachedStatePathInfo;
+
+  const preferred = preferredStatePath();
+  const failures: string[] = [];
+
+  for (const candidate of candidateStatePaths()) {
+    const err = probeScheduleStateWritable(candidate.path);
+    if (!err) {
+      cachedStatePathInfo = {
+        path: candidate.path,
+        source: candidate.source,
+        fallbackUsed: candidate.path !== preferred,
+        preferredPath: preferred,
+      };
+      return cachedStatePathInfo;
+    }
+    failures.push(`${candidate.path} (${err})`);
+  }
+
+  const detail = failures.join('; ');
+  cachedStatePathInfo = {
+    path: preferred,
+    source: process.env.MONTHLY_REPORT_STATE_FILE?.trim() ? 'env' : 'repo-data',
+    fallbackUsed: false,
+    preferredPath: preferred,
+    error: detail,
+  };
+  return cachedStatePathInfo;
+}
+
+export function resetScheduleStatePathCache(): void {
+  cachedStatePathInfo = null;
+}
+
+function defaultStatePath(): string {
+  return ensureScheduleStatePath().path;
+}
+
 export function getScheduleStatePath(): string {
   return defaultStatePath();
+}
+
+export function getScheduleStatePathInfo(): ScheduleStatePathInfo {
+  return ensureScheduleStatePath();
 }
 
 export function readScheduleState(filePath = defaultStatePath()): PersistedScheduleState {
@@ -79,22 +205,34 @@ export function readScheduleState(filePath = defaultStatePath()): PersistedSched
   }
 }
 
-export function writeScheduleState(state: PersistedScheduleState, filePath = defaultStatePath()): void {
+function writeJsonAtomic(filePath: string, payload: PersistedScheduleState): void {
   const dir = path.dirname(filePath);
-  fs.mkdirSync(dir, { recursive: true });
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    fs.renameSync(tmp, filePath);
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: string }).code)
+      : '';
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Cannot write report schedule state at ${filePath}`
+      + (code ? ` (${code})` : '')
+      + `: ${message}. Set MONTHLY_REPORT_STATE_FILE to a directory writable by the backend process `
+      + `(example: /var/lib/jira-dashboard/monthly-report-schedule.json or ~/.local/share/jira-dashboard/...).`,
+    );
+  }
+}
+
+export function writeScheduleState(state: PersistedScheduleState, filePath = defaultStatePath()): void {
   const previous = readScheduleState(filePath);
-  const merged = { ...previous, ...state };
-  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(merged, null, 2)}\n`, 'utf8');
-  fs.renameSync(tmp, filePath);
+  writeJsonAtomic(filePath, { ...previous, ...state });
 }
 
 export function replaceScheduleState(state: PersistedScheduleState, filePath = defaultStatePath()): void {
-  const dir = path.dirname(filePath);
-  fs.mkdirSync(dir, { recursive: true });
-  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-  fs.renameSync(tmp, filePath);
+  writeJsonAtomic(filePath, state);
 }
 
 function lockPathFor(kind: 'weekly' | 'monthly', scheduleKey: string, filePath: string): string {
@@ -158,7 +296,12 @@ function tryCreateExclusiveLock(lockPath: string): boolean {
       ? String((error as { code?: string }).code)
       : '';
     if (code === 'EEXIST') return false;
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Cannot create schedule lock at ${lockPath}`
+      + (code ? ` (${code})` : '')
+      + `: ${message}. Fix directory permissions or set MONTHLY_REPORT_STATE_FILE to a writable path.`,
+    );
   }
 }
 

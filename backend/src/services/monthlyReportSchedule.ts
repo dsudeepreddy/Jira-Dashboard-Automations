@@ -47,35 +47,92 @@ export type ScheduleStatePathInfo = {
 
 let cachedStatePathInfo: ScheduleStatePathInfo | null = null;
 
-/** Repo root from compiled `dist/services` (or `src/services` under ts-node). */
-function repoRoot(): string {
-  return path.resolve(__dirname, '../../..');
+/**
+ * Strip quotes/BOM that often sneak into container -e / .env values.
+ * (MONTHLY_REPORT_STATE_FILE is read from process.env, not zod-cleaned env.)
+ */
+function cleanPathEnv(value: string | undefined): string {
+  if (!value) return '';
+  let text = value.trim();
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1).trim();
+  if (
+    (text.startsWith('"') && text.endsWith('"'))
+    || (text.startsWith("'") && text.endsWith("'"))
+  ) {
+    text = text.slice(1, -1).trim();
+  }
+  return text.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+}
+
+/**
+ * Backend package root (`/app` in container, `.../backend` locally).
+ * From compiled `dist/services` that is two levels up — NOT three
+ * (three levels from `/app/dist/services` wrongly becomes `/`).
+ */
+function packageRoot(): string {
+  return path.resolve(__dirname, '../..');
+}
+
+/**
+ * Directory used to resolve relative MONTHLY_REPORT_STATE_FILE values.
+ * - Container (`/app`): package root
+ * - Local monorepo: repo root (parent of `backend/`) when present
+ */
+function statePathBase(): string {
+  const pkg = packageRoot();
+  if (pkg === '/app') return pkg;
+  // Never treat filesystem root as a base (broken 3-level resolve used to do this).
+  if (pkg === path.parse(pkg).root) return '/app';
+
+  const parent = path.resolve(pkg, '..');
+  try {
+    if (
+      fs.existsSync(path.join(parent, 'backend', 'package.json'))
+      && fs.existsSync(path.join(parent, 'package.json'))
+    ) {
+      return parent;
+    }
+  } catch {
+    // ignore
+  }
+  return pkg;
 }
 
 function resolveConfiguredPath(configured: string): string {
-  return path.isAbsolute(configured)
-    ? configured
-    : path.resolve(repoRoot(), configured);
+  const cleaned = cleanPathEnv(configured);
+  if (!cleaned) {
+    return path.join(statePathBase(), 'data', 'monthly-report-schedule.json');
+  }
+  if (path.isAbsolute(cleaned)) return cleaned;
+  return path.resolve(statePathBase(), cleaned);
 }
 
 function preferredStatePath(): string {
-  const configured = process.env.MONTHLY_REPORT_STATE_FILE?.trim();
+  const configured = cleanPathEnv(process.env.MONTHLY_REPORT_STATE_FILE);
   if (configured) return resolveConfiguredPath(configured);
+  // Container image: WORKDIR /app with dist/ + /app/data (see backend/Dockerfile).
   try {
-    if (fs.existsSync('/app/data')) {
+    if (
+      fs.existsSync('/app/data')
+      || (fs.existsSync('/app/dist') && fs.existsSync('/app/package.json'))
+    ) {
       return '/app/data/monthly-report-schedule.json';
     }
   } catch {
     // ignore
   }
-  return path.join(repoRoot(), 'data', 'monthly-report-schedule.json');
+  return path.join(statePathBase(), 'data', 'monthly-report-schedule.json');
 }
 
 function candidateStatePaths(): Array<{ path: string; source: ScheduleStatePathInfo['source'] }> {
   const preferred = preferredStatePath();
-  const configured = process.env.MONTHLY_REPORT_STATE_FILE?.trim();
+  const configured = cleanPathEnv(process.env.MONTHLY_REPORT_STATE_FILE);
   const out: Array<{ path: string; source: ScheduleStatePathInfo['source'] }> = [];
   const push = (filePath: string, source: ScheduleStatePathInfo['source']) => {
+    // Never attempt mkdir on filesystem root or quote-corrupted paths.
+    if (!filePath || filePath === '/' || filePath.includes("'") || filePath.includes('"')) {
+      return;
+    }
     if (!out.some((item) => item.path === filePath)) {
       out.push({ path: filePath, source });
     }
@@ -83,16 +140,13 @@ function candidateStatePaths(): Array<{ path: string; source: ScheduleStatePathI
 
   if (configured) {
     push(resolveConfiguredPath(configured), 'env');
-  } else if (preferred.startsWith('/app/data')) {
-    push(preferred, 'app-data');
-  } else {
-    push(preferred, 'repo-data');
   }
+  push('/app/data/monthly-report-schedule.json', 'app-data');
+  push(path.join(statePathBase(), 'data', 'monthly-report-schedule.json'), 'repo-data');
 
-  // Service-user home — writable even when the install tree is root-owned / read-only.
   try {
     const home = os.homedir();
-    if (home) {
+    if (home && home !== '/') {
       push(
         path.join(home, '.local', 'share', 'jira-dashboard', 'monthly-report-schedule.json'),
         'home',
@@ -106,6 +160,19 @@ function candidateStatePaths(): Array<{ path: string; source: ScheduleStatePathI
     path.join(os.tmpdir(), 'jira-dashboard', 'monthly-report-schedule.json'),
     'tmpdir',
   );
+
+  const preferredIdx = out.findIndex((item) => item.path === preferred);
+  if (preferredIdx > 0) {
+    const [item] = out.splice(preferredIdx, 1);
+    out.unshift(item);
+  } else if (preferredIdx < 0 && preferred) {
+    push(preferred, configured ? 'env' : 'repo-data');
+    const again = out.findIndex((item) => item.path === preferred);
+    if (again > 0) {
+      const [item] = out.splice(again, 1);
+      out.unshift(item);
+    }
+  }
   return out;
 }
 
@@ -171,7 +238,7 @@ export function ensureScheduleStatePath(): ScheduleStatePathInfo {
   const detail = failures.join('; ');
   cachedStatePathInfo = {
     path: preferred,
-    source: process.env.MONTHLY_REPORT_STATE_FILE?.trim() ? 'env' : 'repo-data',
+    source: cleanPathEnv(process.env.MONTHLY_REPORT_STATE_FILE) ? 'env' : 'repo-data',
     fallbackUsed: false,
     preferredPath: preferred,
     error: detail,

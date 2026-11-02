@@ -228,3 +228,25 @@ test('ensureScheduleStatePath falls back when preferred path is not writable', (
     schedule.resetScheduleStatePathCache();
   }
 });
+
+test('quoted MONTHLY_REPORT_STATE_FILE is stripped and does not resolve under /', () => {
+  const previous = process.env.MONTHLY_REPORT_STATE_FILE;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jira-sched-quoted-'));
+  const target = path.join(dir, 'monthly-report-schedule.json');
+  // Simulate container -e MONTHLY_REPORT_STATE_FILE='./data/...' style quoting bugs,
+  // but point at an absolute path so the probe can succeed after strip.
+  process.env.MONTHLY_REPORT_STATE_FILE = `'${target}'`;
+  schedule.resetScheduleStatePathCache();
+  try {
+    const info = schedule.ensureScheduleStatePath();
+    assert.equal(info.path, target);
+    assert.ok(!info.path.includes("'"), info.path);
+    assert.notEqual(info.path, "/'./data'");
+    assert.ok(!info.error, info.error || 'expected writable path');
+  } finally {
+    if (previous === undefined) delete process.env.MONTHLY_REPORT_STATE_FILE;
+    else process.env.MONTHLY_REPORT_STATE_FILE = previous;
+    schedule.resetScheduleStatePathCache();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
